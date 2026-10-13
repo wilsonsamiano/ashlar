@@ -90,7 +90,7 @@ data class Tile(val pkg: String, val cls: String, val label: String, var size: I
  * Start-screen tile grid. Small is a quarter of a medium square (2x2 cells
  * on a 12-column grid, medium is 4x4), so four small tiles fill one square.
  * Wide is the full width and the height of a medium tile.
- * A null item at the end renders the "+" pin-new-app tile.
+ * A null item at the end renders the "+" pin tile, and only while organizing.
  */
 class TileAdapter(
     private val ctx: Context,
@@ -109,7 +109,9 @@ class TileAdapter(
     var editMode: Boolean = false
         set(value) {
             if (field == value) return
+            val kept = items.filterNotNull()
             field = value
+            items = if (value) kept + listOf(null) else kept
             notifyDataSetChanged()
         }
 
@@ -117,7 +119,7 @@ class TileAdapter(
     var featherHold: Boolean = false
 
     fun submit(tiles: List<Tile>) {
-        items = tiles + listOf(null)
+        items = if (editMode) tiles + listOf(null) else tiles
         notifyDataSetChanged()
     }
 
