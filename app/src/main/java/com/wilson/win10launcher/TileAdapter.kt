@@ -68,6 +68,9 @@ class TileAdapter(
             notifyDataSetChanged()
         }
 
+    /** Rebind must not flatten tiles while they are feathering back in. */
+    var featherHold: Boolean = false
+
     fun submit(tiles: List<Tile>) {
         items = tiles + listOf(null)
         notifyDataSetChanged()
@@ -140,11 +143,19 @@ class TileAdapter(
     override fun onBindViewHolder(h: VH, position: Int) {
         val t = items[position]
         h.root.animate().cancel()
-        h.face.animate().cancel()
-        h.face.rotationX = 0f
-        h.face.rotationY = 0f
-        h.face.scaleX = 1f
-        h.face.scaleY = 1f
+        if (!featherHold) {
+            h.face.animate().setStartDelay(0L)
+            h.face.animate().setInterpolator(android.view.animation.DecelerateInterpolator())
+            h.face.animate().cancel()
+            h.face.rotationX = 0f
+            h.face.rotationY = 0f
+            h.face.scaleX = 1f
+            h.face.scaleY = 1f
+            if (h.face.width > 0 && h.face.height > 0) {
+                h.face.pivotX = h.face.width / 2f
+                h.face.pivotY = h.face.height / 2f
+            }
+        }
         h.face.elevation = if (editMode) dp(2).toFloat() else 0f
         val gap = dp(2)
         val unit = cellSize(h.root)
@@ -263,11 +274,19 @@ class TileAdapter(
         val maxTilt = 11f
         val rotY = ((x - w / 2f) / (w / 2f) * maxTilt).coerceIn(-maxTilt, maxTilt)
         val rotX = ((h / 2f - y) / (h / 2f) * maxTilt).coerceIn(-maxTilt, maxTilt)
-        v.animate().rotationX(rotX).rotationY(rotY).setDuration(110).start()
+        v.animate().rotationX(rotX).rotationY(rotY)
+            .setStartDelay(0L)
+            .setInterpolator(android.view.animation.DecelerateInterpolator())
+            .setDuration(110)
+            .start()
     }
 
     private fun untilt(v: View) {
-        v.animate().rotationX(0f).rotationY(0f).setDuration(200).start()
+        v.animate().rotationX(0f).rotationY(0f)
+            .setStartDelay(0L)
+            .setInterpolator(android.view.animation.DecelerateInterpolator())
+            .setDuration(200)
+            .start()
     }
 
     private fun darken(c: Int, f: Float): Int {

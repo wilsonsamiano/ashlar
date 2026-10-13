@@ -4,7 +4,8 @@
     android:id="@+id/tileRoot"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:clipChildren="true">
+    android:clipChildren="false"
+    android:clipToPadding="false">
 
     <FrameLayout
         android:id="@+id/tileFace"

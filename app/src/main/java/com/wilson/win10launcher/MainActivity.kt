@@ -23,8 +23,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var editBanner: TextView
     private lateinit var editBtn: Button
     private val cols = Tile.GRID
-    private enum class Leave { NONE, SLIDE, TURN }
+    private enum class Leave { NONE, SLIDE, TURN, FEATHER }
     private var leave = Leave.NONE
+    private var featherX = 0f
+    private var featherY = 0f
+    private var featherToken = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         prefs = Prefs(this)
@@ -66,15 +69,24 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        val returning = leave
+        if (returning == Leave.FEATHER) {
+            featherToken++
+            adapter.featherHold = true
+        }
         refresh()
         val page = page()
-        when (leave) {
+        when (returning) {
             Leave.SLIDE -> {
                 val w = if (page.width > 0) page.width.toFloat()
                 else resources.displayMetrics.widthPixels.toFloat()
                 PageTurn.returnSlide(page, -w)
             }
             Leave.TURN -> PageTurn.returnTurn(page)
+            Leave.FEATHER -> {
+                PageTurn.featherReturn(grid, featherX, featherY)
+                grid.postDelayed({ adapter.featherHold = false }, 560L)
+            }
             Leave.NONE -> Unit
         }
         leave = Leave.NONE
@@ -192,12 +204,28 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun launchTile(t: Tile, view: View) {
+        if (leave != Leave.NONE) return
         val i = Intent(Intent.ACTION_MAIN).apply {
             component = ComponentName(t.pkg, t.cls)
             addCategory(Intent.CATEGORY_LAUNCHER)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
         }
-        turnTo(i, externalApp = true)
+        val loc = IntArray(2)
+        view.getLocationOnScreen(loc)
+        featherX = loc[0] + view.width / 2f
+        featherY = loc[1] + view.height / 2f
+        leave = Leave.FEATHER
+        val token = ++featherToken
+        PageTurn.featherOut(grid, view) {
+            if (token != featherToken || leave != Leave.FEATHER) return@featherOut
+            try {
+                startActivity(PageTurn.quiet(i), PageTurn.appOptions(this))
+                PageTurn.noSystemAnim(this)
+            } catch (e: Exception) {
+                leave = Leave.NONE
+                PageTurn.featherReset(grid)
+            }
+        }
     }
 
     private fun showOptions(t: Tile, anchor: View) {
@@ -284,7 +312,10 @@ class MainActivity : AppCompatActivity() {
             super.onSelectedChanged(viewHolder, actionState)
             if (actionState == ItemTouchHelper.ACTION_STATE_DRAG && viewHolder != null) {
                 val face = viewHolder.itemView.findViewById<View>(R.id.tileFace) ?: viewHolder.itemView
-                face.animate().scaleX(1.05f).scaleY(1.05f).setDuration(100).start()
+                face.animate().scaleX(1.05f).scaleY(1.05f)
+                    .setStartDelay(0L)
+                    .setInterpolator(android.view.animation.DecelerateInterpolator())
+                    .setDuration(100).start()
                 face.elevation = dp(12).toFloat()
             }
         }
@@ -292,7 +323,10 @@ class MainActivity : AppCompatActivity() {
         override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
             super.clearView(recyclerView, viewHolder)
             val face = viewHolder.itemView.findViewById<View>(R.id.tileFace) ?: viewHolder.itemView
-            face.animate().scaleX(1f).scaleY(1f).setDuration(100).start()
+            face.animate().scaleX(1f).scaleY(1f)
+                .setStartDelay(0L)
+                .setInterpolator(android.view.animation.DecelerateInterpolator())
+                .setDuration(100).start()
             face.elevation = if (adapter.editMode) dp(2).toFloat() else 0f
             prefs.saveTiles(adapter.tiles())
         }
