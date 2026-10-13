@@ -1,18 +1,37 @@
 package com.wilson.win10launcher
 
 import android.app.Activity
+import android.content.Intent
 import android.os.Build
 import android.view.View
-import android.view.animation.AccelerateInterpolator
-import android.view.animation.DecelerateInterpolator
+import android.view.ViewTreeObserver
+import android.view.animation.Interpolator
 
 /**
- * Two motions, kept apart on purpose.
- * Slide is translation only. A 3D turn on the same view draws a second copy
- * of the tiles and leaves the first one sitting still.
- * Turn is rotation only, used when an app opens.
+ * Windows Phone 7 motions, taken from the open-source phone toolkit
+ * (TurnstileTransition on phone.codeplex.com) and from Matthias Shapiro's
+ * frame-by-frame WP7 videos.
+ *
+ * Turnstile (opening an app, settings): the whole page is one flat card
+ * hinged on the left edge. Toolkit ForwardOut swings RotationY 0 → about 50°
+ * with ExponentialEase EaseIn; ForwardIn settles to 0 with EaseOut.
+ * Videos time the swing out at ~250ms and the settle at ~350ms, exponent 6.
+ * Only the right edge falls into the screen, so the page foreshortens
+ * instead of zooming toward the camera. One hardware layer, so the tile
+ * grid cannot draw a second copy.
+ *
+ * App list (arrow, or swipe left on Start): not a turnstile. The videos show
+ * a flat horizontal slide of the whole screen. No rotation.
  */
 object PageTurn {
+
+    private const val OUT_MS = 260L
+    private const val IN_MS = 350L
+    private const val SLIDE_MS = 280L
+    private const val EXPO = 6f
+
+    /** Degrees the right edge falls back into the phone. Left hinge. */
+    private const val OPEN = 72f
 
     fun noSystemAnim(activity: Activity) {
         if (Build.VERSION.SDK_INT >= 34) {
@@ -27,131 +46,141 @@ object PageTurn {
         activity.overridePendingTransition(R.anim.none, R.anim.none)
     }
 
+    fun quiet(intent: Intent): Intent {
+        intent.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
+        return intent
+    }
+
     fun appOptions(activity: Activity): android.os.Bundle {
         val opts = android.app.ActivityOptions.makeCustomAnimation(
             activity, R.anim.none, R.anim.none
         )
-        if (Build.VERSION.SDK_INT >= 33) {
-            opts.setSplashScreenStyle(0)
-        }
+        if (Build.VERSION.SDK_INT >= 33) opts.setSplashScreenStyle(0)
         return opts.toBundle()
     }
 
-    fun slideOff(page: View, then: () -> Unit) {
-        flat(page)
+    /** First frame already off to the right, then a flat slide to rest. */
+    fun enterSlide(page: View, fromX: Float) {
         page.animate().cancel()
-        page.animate()
-            .translationX(-width(page))
-            .setDuration(260)
-            .setInterpolator(AccelerateInterpolator())
-            .withEndAction { then() }
-            .start()
+        flat(page)
+        page.translationX = fromX
+        onPreDraw(page) {
+            flat(page)
+            page.translationX = fromX
+            page.post { slide(page, 0f, easeOut = true, hold = false) }
+        }
     }
 
-    fun slideBack(page: View) {
-        flat(page)
-        if (page.translationX > -8f) page.translationX = -width(page)
+    /** Start is already parked off the left. Slide it back once it is on screen. */
+    fun returnSlide(page: View, fromX: Float) {
         page.animate().cancel()
-        page.animate()
-            .translationX(0f)
-            .setDuration(260)
-            .setInterpolator(DecelerateInterpolator())
-            .start()
+        flat(page)
+        page.translationX = fromX
+        onPreDraw(page) {
+            flat(page)
+            page.translationX = fromX
+            page.post { slide(page, 0f, easeOut = true, hold = false) }
+        }
     }
 
-    /** All apps waits off the right edge. Slide, not a turn. */
-    fun poseSlideIn(page: View) {
+    fun leaveSlide(page: View, toX: Float, then: () -> Unit) {
+        page.animate().cancel()
         flat(page)
-        page.translationX = width(page)
+        slide(page, toX, easeOut = true, hold = true, then = then)
     }
 
-    fun settleSlide(page: View) {
-        flat(page)
+    /** Arriving page: posed folded back, then EaseOut to flat. No zoom. */
+    fun enterTurn(page: View) {
         page.animate().cancel()
-        page.animate()
-            .translationX(0f)
-            .setDuration(260)
-            .setInterpolator(DecelerateInterpolator())
-            .start()
+        page.translationX = 0f
+        page.rotationY = OPEN
+        onPreDraw(page) {
+            hinge(page)
+            page.translationX = 0f
+            page.rotationY = OPEN
+            page.post { spin(page, 0f, IN_MS, easeOut = true, hold = false) }
+        }
+    }
+
+    /** Page underneath is still folded. Unfold it (toolkit BackwardIn). */
+    fun returnTurn(page: View) {
+        page.animate().cancel()
+        onPreDraw(page) {
+            hinge(page)
+            page.translationX = 0f
+            page.rotationY = OPEN
+            page.post { spin(page, 0f, IN_MS, easeOut = true, hold = false) }
+        }
+    }
+
+    /** Toolkit ForwardOut: 0 → folded, EaseIn, then hold so it doesn't snap flat. */
+    fun leaveTurn(page: View, then: () -> Unit) {
+        page.animate().cancel()
+        hinge(page)
+        page.translationX = 0f
+        page.rotationY = 0f
+        spin(page, OPEN, OUT_MS, easeOut = false, hold = true, then = then)
     }
 
     fun slideAwayRight(page: View, then: () -> Unit) {
-        var done = false
-        fun once() {
-            if (done) return
-            done = true
-            then()
-        }
-        flat(page)
-        page.animate().cancel()
-        page.animate()
-            .translationX(width(page))
-            .setDuration(220)
-            .setInterpolator(AccelerateInterpolator())
-            .withEndAction { once() }
-            .start()
-        page.postDelayed({ once() }, 400)
+        val w = widthOf(page)
+        leaveSlide(page, w, then)
     }
 
-    /** Book page. No sideways slide, so the tiles are not drawn twice. */
-    fun turnOut(page: View, then: () -> Unit) {
+    /** Finger tracking. Flat. The view itself moves — there is no second copy. */
+    fun trackSlide(page: View, x: Float) {
         page.animate().cancel()
-        page.translationX = 0f
-        hinge(page)
-        page.animate()
-            .rotationY(-72f)
-            .setDuration(420)
-            .setInterpolator(AccelerateInterpolator(1.1f))
-            .withEndAction { then() }
-            .start()
+        page.rotationY = 0f
+        page.rotationX = 0f
+        page.scaleX = 1f
+        page.scaleY = 1f
+        page.translationX = x
     }
 
-    fun turnBack(page: View) {
-        page.translationX = 0f
-        hinge(page)
-        if (page.rotationY > -8f) page.rotationY = -72f
+    private fun slide(
+        page: View,
+        toX: Float,
+        easeOut: Boolean,
+        hold: Boolean,
+        then: (() -> Unit)? = null
+    ) {
+        page.rotationY = 0f
         page.animate().cancel()
         page.animate()
+            .translationX(toX)
             .rotationY(0f)
-            .setDuration(380)
-            .setInterpolator(DecelerateInterpolator())
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(SLIDE_MS)
+            .setInterpolator(ExpoEase(EXPO, easeOut))
+            .withEndAction {
+                if (!hold) release(page)
+                then?.invoke()
+            }
             .start()
     }
 
-    fun poseTurned(page: View) {
-        page.translationX = 0f
-        hinge(page)
-        page.rotationY = 72f
-    }
-
-    fun settleTurn(page: View) {
-        page.translationX = 0f
-        hinge(page)
+    private fun spin(
+        page: View,
+        toDeg: Float,
+        ms: Long,
+        easeOut: Boolean,
+        hold: Boolean,
+        then: (() -> Unit)? = null
+    ) {
         page.animate().cancel()
         page.animate()
-            .rotationY(0f)
-            .setDuration(420)
-            .setInterpolator(DecelerateInterpolator())
+            .rotationY(toDeg)
+            .translationX(0f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(ms)
+            .setInterpolator(ExpoEase(EXPO, easeOut))
+            .withEndAction {
+                if (!hold) release(page)
+                then?.invoke()
+            }
             .start()
-    }
-
-    fun turnClosed(page: View, then: () -> Unit) {
-        var done = false
-        fun once() {
-            if (done) return
-            done = true
-            then()
-        }
-        page.translationX = 0f
-        hinge(page)
-        page.animate().cancel()
-        page.animate()
-            .rotationY(72f)
-            .setDuration(360)
-            .setInterpolator(AccelerateInterpolator())
-            .withEndAction { once() }
-            .start()
-        page.postDelayed({ once() }, 520)
     }
 
     private fun flat(page: View) {
@@ -161,15 +190,53 @@ object PageTurn {
         page.scaleY = 1f
     }
 
-    private fun width(page: View): Float {
-        return if (page.width > 0) page.width.toFloat()
-        else page.resources.displayMetrics.widthPixels.toFloat()
+    /** One texture for the whole page. Rotating the live grid draws the tiles twice. */
+    private fun hinge(page: View) {
+        flat(page)
+        page.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        val h = if (page.height > 0) page.height else (page.parent as? View)?.height ?: 0
+        page.pivotX = 0f
+        page.pivotY = h / 2f
+        val w = widthOf(page)
+        page.cameraDistance = w * 3.2f
     }
 
-    private fun hinge(page: View) {
-        page.pivotX = 0f
-        page.pivotY = if (page.height > 0) page.height / 2f
-        else page.resources.displayMetrics.heightPixels / 2f
-        page.cameraDistance = page.resources.displayMetrics.density * 9000f
+    private fun release(page: View) {
+        page.animate().cancel()
+        page.translationX = 0f
+        page.rotationX = 0f
+        page.rotationY = 0f
+        page.scaleX = 1f
+        page.scaleY = 1f
+        page.setLayerType(View.LAYER_TYPE_NONE, null)
+    }
+
+    private fun widthOf(page: View): Float {
+        if (page.width > 0) return page.width.toFloat()
+        return page.resources.displayMetrics.widthPixels.toFloat()
+    }
+
+    private fun onPreDraw(page: View, block: () -> Unit) {
+        val obs = page.viewTreeObserver
+        obs.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                if (page.viewTreeObserver.isAlive) {
+                    page.viewTreeObserver.removeOnPreDrawListener(this)
+                }
+                block()
+                return true
+            }
+        })
+    }
+
+    /** Silverlight ExponentialEase, exponent 6, as in the phone toolkit. */
+    private class ExpoEase(private val exponent: Float, private val out: Boolean) : Interpolator {
+        override fun getInterpolation(t: Float): Float {
+            fun easeIn(x: Float): Float {
+                val e = Math.exp(exponent.toDouble())
+                return ((Math.exp(exponent * x.toDouble()) - 1.0) / (e - 1.0)).toFloat()
+            }
+            return if (out) 1f - easeIn(1f - t) else easeIn(t)
+        }
     }
 }

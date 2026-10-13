@@ -32,13 +32,12 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         prefs = Prefs(this)
-        setTheme(if (prefs.darkTheme) R.style.Theme_Win10_Dark_Page else R.style.Theme_Win10_Light_Page)
+        setTheme(if (prefs.darkTheme) R.style.Theme_Win10_Dark else R.style.Theme_Win10_Light)
         super.onCreate(savedInstanceState)
         PageTurn.noSystemAnim(this)
         setContentView(R.layout.activity_settings)
         val page = findViewById<View>(android.R.id.content)
         page.setBackgroundColor(prefs.bgColor())
-        if (savedInstanceState == null) PageTurn.poseTurned(page)
         title = "Launcher settings"
 
         findViewById<View>(R.id.root).setBackgroundColor(prefs.bgColor())
@@ -77,6 +76,7 @@ class SettingsActivity : AppCompatActivity() {
             }
         }
         lookForUpdate(updateBtn, updateStatus)
+        PageTurn.enterTurn(findViewById(android.R.id.content))
     }
 
     private fun installedVersionCode(): Int {
@@ -147,22 +147,12 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    private var turnPlayed = false
-
-    override fun onWindowFocusChanged(hasFocus: Boolean) {
-        super.onWindowFocusChanged(hasFocus)
-        if (!hasFocus || turnPlayed) return
-        turnPlayed = true
-        PageTurn.settleTurn(findViewById(android.R.id.content))
-    }
-
     private var closing = false
 
     override fun finish() {
         if (closing) return
         closing = true
-        val page = findViewById<View>(android.R.id.content)
-        PageTurn.turnClosed(page) {
+        PageTurn.leaveTurn(findViewById(android.R.id.content)) {
             super.finish()
             PageTurn.noSystemAnim(this)
         }

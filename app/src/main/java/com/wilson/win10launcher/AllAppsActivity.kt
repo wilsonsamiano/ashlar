@@ -45,7 +45,9 @@ class AllAppsActivity : AppCompatActivity() {
         setContentView(R.layout.activity_all_apps)
         val page = findViewById<View>(android.R.id.content)
         page.setBackgroundColor(prefs.bgColor())
-        if (savedInstanceState == null) PageTurn.poseSlideIn(page)
+        if (savedInstanceState == null) {
+            PageTurn.enterSlide(page, resources.displayMetrics.widthPixels.toFloat())
+        }
         pickMode = intent.getBooleanExtra("pick", false)
         val titleBar = findViewById<TextView>(R.id.titleBar)
         titleBar.text = if (pickMode) "Tap an app to pin it" else "All apps"
@@ -207,12 +209,13 @@ class AllAppsActivity : AppCompatActivity() {
         }
         turnedAway = true
         val page = findViewById<View>(android.R.id.content)
-        PageTurn.turnOut(page) {
+        PageTurn.leaveTurn(page) {
             try {
-                startActivity(i, PageTurn.appOptions(this))
+                startActivity(PageTurn.quiet(i), PageTurn.appOptions(this))
+                PageTurn.noSystemAnim(this)
             } catch (e: Exception) {
                 turnedAway = false
-                PageTurn.turnBack(page)
+                PageTurn.returnTurn(page)
                 Toast.makeText(this, "Can't open ${app.label}", Toast.LENGTH_SHORT).show()
             }
         }
@@ -222,16 +225,7 @@ class AllAppsActivity : AppCompatActivity() {
         super.onResume()
         if (!turnedAway) return
         turnedAway = false
-        PageTurn.turnBack(findViewById(android.R.id.content))
-    }
-
-    private var turnPlayed = false
-
-    override fun onWindowFocusChanged(hasFocus: Boolean) {
-        super.onWindowFocusChanged(hasFocus)
-        if (!hasFocus || turnPlayed || turnedAway) return
-        turnPlayed = true
-        PageTurn.settleSlide(findViewById(android.R.id.content))
+        PageTurn.returnTurn(findViewById(android.R.id.content))
     }
 
     private var closing = false

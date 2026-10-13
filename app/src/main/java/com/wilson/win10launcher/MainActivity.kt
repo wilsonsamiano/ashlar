@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.PopupMenu
 import android.widget.TextView
@@ -66,20 +67,29 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refresh()
-        val page = findViewById<View>(R.id.root)
+        val page = page()
         when (leave) {
-            Leave.SLIDE -> PageTurn.slideBack(page)
-            Leave.TURN -> PageTurn.turnBack(page)
-            Leave.NONE -> {}
+            Leave.SLIDE -> {
+                val w = if (page.width > 0) page.width.toFloat()
+                else resources.displayMetrics.widthPixels.toFloat()
+                PageTurn.returnSlide(page, -w)
+            }
+            Leave.TURN -> PageTurn.returnTurn(page)
+            Leave.NONE -> Unit
         }
         leave = Leave.NONE
     }
 
+    private fun page(): View = findViewById(android.R.id.content)
+
     private fun slideTo(intent: Intent) {
         if (leave != Leave.NONE) return
         leave = Leave.SLIDE
-        PageTurn.slideOff(findViewById(R.id.root)) {
-            startActivity(intent)
+        val page = page()
+        val w = if (page.width > 0) page.width.toFloat()
+        else resources.displayMetrics.widthPixels.toFloat()
+        PageTurn.leaveSlide(page, -w) {
+            startActivity(PageTurn.quiet(intent))
             PageTurn.noSystemAnim(this)
         }
     }
@@ -87,17 +97,15 @@ class MainActivity : AppCompatActivity() {
     private fun turnTo(intent: Intent, externalApp: Boolean = false) {
         if (leave != Leave.NONE) return
         leave = Leave.TURN
-        val page = findViewById<View>(R.id.root)
-        PageTurn.turnOut(page) {
+        PageTurn.leaveTurn(page()) {
             try {
-                if (externalApp) startActivity(intent, PageTurn.appOptions(this))
-                else {
-                    startActivity(intent)
-                    PageTurn.noSystemAnim(this)
-                }
+                val going = PageTurn.quiet(intent)
+                if (externalApp) startActivity(going, PageTurn.appOptions(this))
+                else startActivity(going)
+                PageTurn.noSystemAnim(this)
             } catch (e: Exception) {
                 leave = Leave.NONE
-                PageTurn.turnBack(page)
+                PageTurn.returnTurn(page())
             }
         }
     }
@@ -123,26 +131,25 @@ class MainActivity : AppCompatActivity() {
     private fun dp(n: Int): Int =
         (n * resources.displayMetrics.density).toInt()
 
-    /** Finger-follow slide into All apps. Rotation is not used here. */
+    /** Flat slide, tracked with the finger. No rotation, so the tiles cannot ghost. */
     private fun swipeAllApps() = object : RecyclerView.SimpleOnItemTouchListener() {
-        private var downX = 0f
-        private var downY = 0f
+        private var downRawX = 0f
+        private var downRawY = 0f
+        private var dragging = false
 
         override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
             if (adapter.editMode || leave != Leave.NONE) return false
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    downX = e.x
-                    downY = e.y
+                    downRawX = e.rawX
+                    downRawY = e.rawY
+                    dragging = false
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    val dx = e.x - downX
-                    val dy = e.y - downY
+                    val dx = e.rawX - downRawX
+                    val dy = e.rawY - downRawY
                     if (dx < -dp(28) && kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.5f) {
-                        val page = findViewById<View>(R.id.root)
-                        page.animate().cancel()
-                        page.rotationY = 0f
-                        page.rotationX = 0f
+                        dragging = true
                         return true
                     }
                 }
@@ -151,20 +158,24 @@ class MainActivity : AppCompatActivity() {
         }
 
         override fun onTouchEvent(rv: RecyclerView, e: MotionEvent) {
-            val page = findViewById<View>(R.id.root)
-            val w = page.width.coerceAtLeast(1).toFloat()
-            val dx = (e.x - downX).coerceAtMost(0f)
+            if (!dragging) return
+            val page = page()
+            val w = if (page.width > 0) page.width.toFloat()
+            else resources.displayMetrics.widthPixels.toFloat()
+            val dx = (e.rawX - downRawX).coerceAtMost(0f)
             when (e.actionMasked) {
-                MotionEvent.ACTION_MOVE -> {
-                    page.rotationY = 0f
-                    page.rotationX = 0f
-                    page.translationX = dx.coerceAtLeast(-w)
-                }
+                MotionEvent.ACTION_MOVE -> PageTurn.trackSlide(page, dx.coerceAtLeast(-w))
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    dragging = false
                     if (e.actionMasked == MotionEvent.ACTION_UP && page.translationX < -w * 0.22f) {
-                        slideTo(Intent(this@MainActivity, AllAppsActivity::class.java))
+                        if (leave != Leave.NONE) return
+                        leave = Leave.SLIDE
+                        PageTurn.leaveSlide(page, -w) {
+                            startActivity(PageTurn.quiet(Intent(this@MainActivity, AllAppsActivity::class.java)))
+                            PageTurn.noSystemAnim(this@MainActivity)
+                        }
                     } else {
-                        page.animate().translationX(0f).rotationY(0f).setDuration(180).start()
+                        PageTurn.leaveSlide(page, 0f) {}
                     }
                 }
             }
