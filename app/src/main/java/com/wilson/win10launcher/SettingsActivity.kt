@@ -1,7 +1,9 @@
 package com.wilson.win10launcher
 
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.os.Bundle
 import android.util.TypedValue
 import android.view.LayoutInflater
@@ -37,7 +39,7 @@ class SettingsActivity : AppCompatActivity() {
         title = "Launcher settings"
 
         findViewById<View>(R.id.root).setBackgroundColor(prefs.bgColor())
-        for (id in listOf(R.id.accentTitle, R.id.themeTitle)) {
+        for (id in listOf(R.id.accentTitle, R.id.themeTitle, R.id.updateTitle, R.id.updateStatus)) {
             findViewById<TextView>(id).setTextColor(prefs.fgColor())
         }
 
@@ -59,6 +61,87 @@ class SettingsActivity : AppCompatActivity() {
         findViewById<Button>(R.id.resetBtn).setOnClickListener {
             prefs.saveTiles(prefs.defaultTiles())
             Toast.makeText(this, "Start layout reset", Toast.LENGTH_SHORT).show()
+        }
+
+        val updateBtn = findViewById<Button>(R.id.updateBtn)
+        val updateStatus = findViewById<TextView>(R.id.updateStatus)
+        updateStatus.text = "Version ${installedVersionName()}"
+        updateBtn.setOnClickListener {
+            val remote = updateBtn.tag as? Updater.Remote
+            if (remote != null && remote.versionCode > installedVersionCode()) {
+                downloadUpdate(updateBtn, updateStatus, remote)
+            } else {
+                lookForUpdate(updateBtn, updateStatus)
+            }
+        }
+        lookForUpdate(updateBtn, updateStatus)
+    }
+
+    private fun installedVersionCode(): Int {
+        val info = if (Build.VERSION.SDK_INT >= 33) {
+            packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0))
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.getPackageInfo(packageName, 0)
+        }
+        val code = if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else {
+            @Suppress("DEPRECATION")
+            info.versionCode.toLong()
+        }
+        return code.toInt()
+    }
+
+    private fun installedVersionName(): String {
+        return packageManager.getPackageInfo(packageName, 0).versionName ?: "?"
+    }
+
+    private fun lookForUpdate(button: Button, status: TextView) {
+        button.isEnabled = false
+        button.text = "Check for updates"
+        button.tag = null
+        status.text = "Checking GitHub…"
+        Updater.check { result ->
+            if (isFinishing) return@check
+            button.isEnabled = true
+            result.onSuccess { remote ->
+                val here = installedVersionCode()
+                if (remote == null || remote.versionCode <= here) {
+                    status.text = "Version ${installedVersionName()} — you're up to date"
+                    button.text = "Check for updates"
+                } else {
+                    button.tag = remote
+                    status.text = "Version ${remote.versionName} is ready. Installs over this one. Tiles and settings stay."
+                    button.text = "Download and install"
+                }
+            }.onFailure {
+                status.text = "Couldn't reach GitHub. Check the connection and try again."
+                button.text = "Check for updates"
+            }
+        }
+    }
+
+    private fun downloadUpdate(button: Button, status: TextView, remote: Updater.Remote) {
+        if (!Updater.canInstall(this)) {
+            status.text = "Allow Win10 Launcher to install updates, then tap Download again."
+            Updater.askInstallPermission(this)
+            return
+        }
+        button.isEnabled = false
+        status.text = "Downloading ${remote.versionName}…"
+        Updater.download(this, remote.apkUrl) { result ->
+            if (isFinishing) return@download
+            button.isEnabled = true
+            result.onSuccess { file ->
+                status.text = "Confirm Update on the next screen. Do not uninstall first."
+                try {
+                    Updater.launchInstall(this, file)
+                } catch (e: Exception) {
+                    status.text = "Couldn't open the installer."
+                    Toast.makeText(this, e.message ?: "Install failed", Toast.LENGTH_LONG).show()
+                }
+            }.onFailure {
+                status.text = "Download failed. Tap to try again."
+            }
         }
     }
 
