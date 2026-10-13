@@ -37,14 +37,14 @@ import kotlin.math.hypot
  */
 object PageTurn {
 
-    private const val OUT_MS = 360L
-    private const val IN_MS = 460L
-    private const val SLIDE_MS = 360L
+    private const val OUT_MS = 700L
+    private const val IN_MS = 900L
+    private const val SLIDE_MS = 520L
     private const val EXPO = 6f
-    private const val PUSH_MS = 90L
-    /** Long enough that a 60Hz screen paints the turn, still one animator. */
-    private const val FEATHER_OUT = 340L
-    private const val FEATHER_IN = 420L
+    private const val PUSH_MS = 160L
+    /** Long on purpose so a slow screen still paints the whole turn. */
+    private const val FEATHER_OUT = 720L
+    private const val FEATHER_IN = 860L
 
     /** Left hinge. Negative: Android's positive rotationY is the mirror of WP7. */
     private const val OPEN = -72f
@@ -165,6 +165,9 @@ object PageTurn {
             face.rotationY = 0f
             face.scaleX = 1f
             face.scaleY = 1f
+            if (face.layerType != View.LAYER_TYPE_HARDWARE) {
+                face.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+            }
         }
         unclip(grid)
         tapped.animate()
@@ -280,7 +283,7 @@ object PageTurn {
 
     private class TileSpin(val face: View, val delay: Long)
 
-    /** One clock for every tile. A layer per tile is what made this hitch. */
+    /** One clock for every tile. Each tile is a GPU texture so the long turn stays smooth. */
     private fun playWave(
         tiles: List<TileSpin>,
         from: Float,
@@ -332,11 +335,13 @@ object PageTurn {
         }
     }
 
-    /** Same hinge as the whole-page turn, so the tiles stay one sheet. No offscreen layer. */
+    /** Same hinge as the whole-page turn, so the tiles stay one sheet. */
     private fun hingeFace(face: View, hinge: Hinge) {
         val loc = IntArray(2)
         face.getLocationOnScreen(loc)
-        face.setLayerType(View.LAYER_TYPE_NONE, null)
+        if (face.layerType != View.LAYER_TYPE_HARDWARE) {
+            face.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        }
         face.pivotX = hinge.x - loc[0]
         face.pivotY = hinge.y - loc[1]
         face.cameraDistance = hinge.pageW * 4.8f
