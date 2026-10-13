@@ -42,11 +42,13 @@
         <activity
             android:name=".AllAppsActivity"
             android:exported="false"
+            android:enableOnBackInvokedCallback="false"
             android:windowSoftInputMode="adjustPan" />
 
         <activity
             android:name=".SettingsActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:enableOnBackInvokedCallback="false" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

@@ -66,7 +66,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun open(intent: Intent) {
         startActivity(intent)
-        PageTurn.forward(this)
+        PageTurn.noSystemAnim(this)
     }
 
     private fun refresh() {

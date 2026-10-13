@@ -39,10 +39,13 @@ class AllAppsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         prefs = Prefs(this)
-        setTheme(if (prefs.darkTheme) R.style.Theme_Win10_Dark else R.style.Theme_Win10_Light)
+        setTheme(if (prefs.darkTheme) R.style.Theme_Win10_Dark_Page else R.style.Theme_Win10_Light_Page)
         super.onCreate(savedInstanceState)
+        PageTurn.noSystemAnim(this)
         setContentView(R.layout.activity_all_apps)
-        PageTurn.arm(this)
+        val page = findViewById<View>(android.R.id.content)
+        page.setBackgroundColor(prefs.bgColor())
+        if (savedInstanceState == null) PageTurn.playOpen(page)
         pickMode = intent.getBooleanExtra("pick", false)
         val titleBar = findViewById<TextView>(R.id.titleBar)
         titleBar.text = if (pickMode) "Tap an app to pin it" else "All apps"
@@ -209,8 +212,15 @@ class AllAppsActivity : AppCompatActivity() {
         }
     }
 
+    private var closing = false
+
     override fun finish() {
-        super.finish()
-        PageTurn.back(this)
+        if (closing) return
+        closing = true
+        val page = findViewById<View>(android.R.id.content)
+        PageTurn.playClose(page) {
+            super.finish()
+            PageTurn.noSystemAnim(this)
+        }
     }
 }

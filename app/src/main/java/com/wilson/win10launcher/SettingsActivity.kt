@@ -32,10 +32,13 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         prefs = Prefs(this)
-        setTheme(if (prefs.darkTheme) R.style.Theme_Win10_Dark else R.style.Theme_Win10_Light)
+        setTheme(if (prefs.darkTheme) R.style.Theme_Win10_Dark_Page else R.style.Theme_Win10_Light_Page)
         super.onCreate(savedInstanceState)
+        PageTurn.noSystemAnim(this)
         setContentView(R.layout.activity_settings)
-        PageTurn.arm(this)
+        val page = findViewById<View>(android.R.id.content)
+        page.setBackgroundColor(prefs.bgColor())
+        if (savedInstanceState == null) PageTurn.playOpen(page)
         title = "Launcher settings"
 
         findViewById<View>(R.id.root).setBackgroundColor(prefs.bgColor())
@@ -48,15 +51,14 @@ class SettingsActivity : AppCompatActivity() {
         rv.isNestedScrollingEnabled = false
         val adapter = AccentAdapter(accents, prefs.accentColor) { color ->
             prefs.accentColor = color
-            PageTurn.plainClose(this)
             recreate()
         }
         rv.adapter = adapter
 
         val darkBtn = findViewById<Button>(R.id.darkBtn)
         val lightBtn = findViewById<Button>(R.id.lightBtn)
-        darkBtn.setOnClickListener { prefs.darkTheme = true; PageTurn.plainClose(this); recreate() }
-        lightBtn.setOnClickListener { prefs.darkTheme = false; PageTurn.plainClose(this); recreate() }
+        darkBtn.setOnClickListener { prefs.darkTheme = true; recreate() }
+        lightBtn.setOnClickListener { prefs.darkTheme = false; recreate() }
 
         findViewById<Button>(R.id.resetBtn).setOnClickListener {
             prefs.saveTiles(prefs.defaultTiles())
@@ -145,9 +147,16 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
+    private var closing = false
+
     override fun finish() {
-        super.finish()
-        PageTurn.back(this)
+        if (closing) return
+        closing = true
+        val page = findViewById<View>(android.R.id.content)
+        PageTurn.playClose(page) {
+            super.finish()
+            PageTurn.noSystemAnim(this)
+        }
     }
 
     inner class AccentAdapter(
