@@ -16,9 +16,9 @@ import android.view.animation.Interpolator
  * hinged on the left edge. Toolkit ForwardOut swings RotationY 0 → about 50°
  * with ExponentialEase EaseIn; ForwardIn settles to 0 with EaseOut.
  * Videos time the swing out at ~250ms and the settle at ~350ms, exponent 6.
- * Only the right edge falls into the screen, so the page foreshortens
- * instead of zooming toward the camera. One hardware layer, so the tile
- * grid cannot draw a second copy.
+ * Only the right edge swings. Android's positive rotationY is the mirror of the
+ * phone's PlaneProjection, so the angle is negative — 2.0 turned the page
+ * backwards. One hardware layer, so the tile grid cannot draw a second copy.
  *
  * App list (arrow, or swipe left on Start): not a turnstile. The videos show
  * a flat horizontal slide of the whole screen. No rotation.
@@ -30,8 +30,8 @@ object PageTurn {
     private const val SLIDE_MS = 280L
     private const val EXPO = 6f
 
-    /** Degrees the right edge falls back into the phone. Left hinge. */
-    private const val OPEN = 72f
+    /** Left hinge. Negative: Android's positive rotationY is the mirror of WP7. */
+    private const val OPEN = -72f
 
     fun noSystemAnim(activity: Activity) {
         if (Build.VERSION.SDK_INT >= 34) {
@@ -198,7 +198,8 @@ object PageTurn {
         page.pivotX = 0f
         page.pivotY = h / 2f
         val w = widthOf(page)
-        page.cameraDistance = w * 3.2f
+        // Far enough that the near edge doesn't balloon, close enough to read as a hinge.
+        page.cameraDistance = w * 4.8f
     }
 
     private fun release(page: View) {
