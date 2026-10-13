@@ -31,6 +31,7 @@ import androidx.recyclerview.widget.RecyclerView
 class AllAppsActivity : AppCompatActivity() {
 
     private lateinit var prefs: Prefs
+    private var appliedDark = true
     private lateinit var adapter: AppsAdapter
     private lateinit var rv: RecyclerView
     private var all: List<AppList.App> = emptyList()
@@ -43,7 +44,8 @@ class AllAppsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         prefs = Prefs(this)
-        setTheme(if (prefs.darkTheme) R.style.Theme_Win10_Dark else R.style.Theme_Win10_Light)
+        appliedDark = prefs.darkTheme
+        setTheme(if (appliedDark) R.style.Theme_Win10_Dark else R.style.Theme_Win10_Light)
         super.onCreate(savedInstanceState)
         PageTurn.noSystemAnim(this)
         setContentView(R.layout.activity_all_apps)
@@ -322,6 +324,10 @@ class AllAppsActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (prefs.themeMode == "sun" && prefs.darkTheme != appliedDark) {
+            recreate()
+            return
+        }
         if (reloadOnResume) {
             reloadOnResume = false
             reloadApps()

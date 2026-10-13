@@ -8,6 +8,7 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Required on Android 9+ or the system uninstall screen will not open. -->
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <!-- Fallback so the app list still works on Android 11+ if the
          all-packages permission is not granted (common on Go tablets). -->

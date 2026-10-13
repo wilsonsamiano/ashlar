@@ -1,10 +1,12 @@
 package com.wilson.win10launcher
 
+import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
+import android.text.format.DateFormat
 import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.View
@@ -12,14 +14,28 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 
-/** Accent color picker (classic Windows Phone palette), dark/light theme, reset layout. */
+/** Accent color picker, dark/light/sunrise theme, saved Start layout. */
 class SettingsActivity : AppCompatActivity() {
 
     private lateinit var prefs: Prefs
+    private var appliedDark = true
+
+    private val locationPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (!granted) {
+            Toast.makeText(this, "Location is needed for sunrise and sunset", Toast.LENGTH_LONG).show()
+            return@registerForActivityResult
+        }
+        prefs.themeMode = "sun"
+        Daylight.refresh(this) { if (!isFinishing) recreate() }
+    }
 
     // Classic Windows Phone 8.1 accent palette
     private val accents = listOf(
@@ -32,7 +48,8 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         prefs = Prefs(this)
-        setTheme(if (prefs.darkTheme) R.style.Theme_Win10_Dark else R.style.Theme_Win10_Light)
+        appliedDark = prefs.darkTheme
+        setTheme(if (appliedDark) R.style.Theme_Win10_Dark else R.style.Theme_Win10_Light)
         super.onCreate(savedInstanceState)
         PageTurn.noSystemAnim(this)
         setContentView(R.layout.activity_settings)
@@ -41,7 +58,7 @@ class SettingsActivity : AppCompatActivity() {
         title = "Launcher settings"
 
         findViewById<View>(R.id.root).setBackgroundColor(prefs.bgColor())
-        for (id in listOf(R.id.accentTitle, R.id.themeTitle, R.id.updateTitle, R.id.updateStatus)) {
+        for (id in listOf(R.id.accentTitle, R.id.themeTitle, R.id.themeStatus, R.id.updateTitle, R.id.updateStatus)) {
             findViewById<TextView>(id).setTextColor(prefs.fgColor())
         }
 
@@ -56,12 +73,26 @@ class SettingsActivity : AppCompatActivity() {
 
         val darkBtn = findViewById<Button>(R.id.darkBtn)
         val lightBtn = findViewById<Button>(R.id.lightBtn)
-        darkBtn.setOnClickListener { prefs.darkTheme = true; recreate() }
-        lightBtn.setOnClickListener { prefs.darkTheme = false; recreate() }
+        val sunBtn = findViewById<Button>(R.id.sunBtn)
+        darkBtn.setOnClickListener { prefs.themeMode = "dark"; recreate() }
+        lightBtn.setOnClickListener { prefs.themeMode = "light"; recreate() }
+        sunBtn.setOnClickListener { chooseSun() }
+        val mode = prefs.themeMode
+        darkBtn.alpha = if (mode == "dark") 1f else 0.45f
+        lightBtn.alpha = if (mode == "light") 1f else 0.45f
+        sunBtn.alpha = if (mode == "sun") 1f else 0.45f
+        findViewById<TextView>(R.id.themeStatus).text = themeStatus()
 
-        findViewById<Button>(R.id.resetBtn).setOnClickListener {
-            prefs.saveTiles(prefs.defaultTiles())
-            Toast.makeText(this, "Start layout reset", Toast.LENGTH_SHORT).show()
+        findViewById<Button>(R.id.saveBtn).setOnClickListener {
+            prefs.saveLayoutSnapshot()
+            Toast.makeText(this, "Start layout saved", Toast.LENGTH_SHORT).show()
+        }
+        findViewById<Button>(R.id.restoreBtn).setOnClickListener {
+            if (prefs.restoreLayoutSnapshot()) {
+                Toast.makeText(this, "Saved layout restored", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "No saved layout yet", Toast.LENGTH_SHORT).show()
+            }
         }
 
         val updateBtn = findViewById<Button>(R.id.updateBtn)
@@ -77,6 +108,33 @@ class SettingsActivity : AppCompatActivity() {
         }
         lookForUpdate(updateBtn, updateStatus)
         PageTurn.enterTurn(findViewById(android.R.id.content))
+    }
+
+    private fun chooseSun() {
+        val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        if (granted) {
+            prefs.themeMode = "sun"
+            Daylight.refresh(this) { if (!isFinishing) recreate() }
+        } else {
+            locationPermission.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+        }
+    }
+
+    private fun themeStatus(): String {
+        return when (prefs.themeMode) {
+            "light" -> "Always light"
+            "sun" -> {
+                val whenNext = Daylight.nextChange(this)
+                if (whenNext == null) {
+                    "Needs location for sunrise and sunset"
+                } else {
+                    val clock = DateFormat.getTimeFormat(this).format(whenNext)
+                    if (prefs.darkTheme) "Dark until sunrise, $clock" else "Light until sunset, $clock"
+                }
+            }
+            else -> "Always dark"
+        }
     }
 
     private fun installedVersionCode(): Int {

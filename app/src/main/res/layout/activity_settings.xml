@@ -52,16 +52,39 @@
                 android:layout_width="0dp"
                 android:layout_height="48dp"
                 android:layout_weight="1"
-                android:layout_marginStart="12dp"
+                android:layout_marginStart="8dp"
                 android:text="Light" />
+
+            <Button
+                android:id="@+id/sunBtn"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:text="Auto" />
         </LinearLayout>
 
+        <TextView
+            android:id="@+id/themeStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:fontFamily="sans-serif-light"
+            android:textSize="15sp" />
+
         <Button
-            android:id="@+id/resetBtn"
+            android:id="@+id/saveBtn"
             android:layout_width="match_parent"
             android:layout_height="48dp"
             android:layout_marginTop="28dp"
-            android:text="Reset Start layout" />
+            android:text="Save Start layout" />
+
+        <Button
+            android:id="@+id/restoreBtn"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="8dp"
+            android:text="Restore saved layout" />
 
         <TextView
             android:id="@+id/updateTitle"

@@ -15,12 +15,34 @@ class Prefs(private val appCtx: Context) {
         get() = sp.getInt("accent", 0xFF0078D7.toInt())
         set(v) { sp.edit().putInt("accent", v).apply() }
 
-    var darkTheme: Boolean
-        get() = sp.getBoolean("dark", true)
-        set(v) { sp.edit().putBoolean("dark", v).apply() }
+    /** "dark", "light", or "sun" (light from sunrise to sunset). */
+    var themeMode: String
+        get() = sp.getString("themeMode", null) ?: if (sp.getBoolean("dark", true)) "dark" else "light"
+        set(v) { sp.edit().putString("themeMode", v).apply() }
+
+    val darkTheme: Boolean
+        get() = when (themeMode) {
+            "light" -> false
+            "sun" -> !Daylight.isDay(appCtx)
+            else -> true
+        }
 
     fun bgColor() = if (darkTheme) 0xFF000000.toInt() else 0xFFFFFFFF.toInt()
     fun fgColor() = if (darkTheme) 0xFFFFFFFF.toInt() else 0xFF000000.toInt()
+
+    /** Keep a copy of the current Start layout so it can be put back later. */
+    fun saveLayoutSnapshot() {
+        sp.edit().putString("savedTiles", sp.getString("tiles", "[]")).apply()
+    }
+
+    fun hasSavedLayout() = !sp.getString("savedTiles", null).isNullOrEmpty()
+
+    fun restoreLayoutSnapshot(): Boolean {
+        val raw = sp.getString("savedTiles", null) ?: return false
+        if (raw.isEmpty()) return false
+        sp.edit().putString("tiles", raw).apply()
+        return true
+    }
 
     /** Load pinned tiles; drops tiles whose app was uninstalled. */
     fun loadTiles(): List<Tile> {

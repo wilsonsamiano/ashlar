@@ -31,9 +31,11 @@ class MainActivity : AppCompatActivity() {
     private var featherX = 0f
     private var featherY = 0f
     private var featherToken = 0
+    private var appliedDark = true
     private val timeTick = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (::adapter.isInitialized && ::grid.isInitialized) adapter.paintClocks(grid)
+            if (prefs.themeMode == "sun" && prefs.darkTheme != appliedDark && !isFinishing) recreate()
         }
     }
 
@@ -49,6 +51,11 @@ class MainActivity : AppCompatActivity() {
             @Suppress("UnspecifiedRegisterReceiverFlag")
             registerReceiver(timeTick, filter)
         }
+        if (prefs.themeMode == "sun") {
+            Daylight.refresh(this) {
+                if (!isFinishing && prefs.darkTheme != appliedDark) recreate()
+            }
+        }
     }
 
     override fun onStop() {
@@ -58,7 +65,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         prefs = Prefs(this)
-        setTheme(if (prefs.darkTheme) R.style.Theme_Win10_Dark else R.style.Theme_Win10_Light)
+        appliedDark = prefs.darkTheme
+        setTheme(if (appliedDark) R.style.Theme_Win10_Dark else R.style.Theme_Win10_Light)
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
