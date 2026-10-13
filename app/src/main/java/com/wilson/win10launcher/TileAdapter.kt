@@ -180,7 +180,7 @@ class TileAdapter(
 
         if (t == null) {
             h.face.background = ColorDrawable(darken(accent, 0.75f))
-            sizeIcon(h.icon, dp(28))
+            sizeIcon(h.icon, (faceH * 0.42f).toInt().coerceIn(dp(28), dp(72)))
             (h.icon.layoutParams as FrameLayout.LayoutParams).apply {
                 gravity = android.view.Gravity.CENTER
                 marginStart = 0
@@ -195,31 +195,31 @@ class TileAdapter(
         }
         h.face.background = rippleBg(accent)
         h.icon.imageTintList = null
-        val iconPx = when (t.size) {
-            Tile.HALF -> dp(18)
-            Tile.SMALL -> dp(26)
-            Tile.MEDIUM -> dp(42)
-            else -> dp(48)
-        }
         val iconLp = h.icon.layoutParams as FrameLayout.LayoutParams
         val labelLp = h.label.layoutParams as FrameLayout.LayoutParams
         if (t.size == Tile.HALF) {
-            val iconSide = dp(18).coerceAtMost((faceH * 0.7f).toInt().coerceAtLeast(dp(12)))
+            val iconSide = (faceH * 0.70f).toInt().coerceIn(dp(18), dp(40))
             iconLp.gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
-            iconLp.setMargins(dp(8), 0, 0, 0)
+            iconLp.setMargins(dp(6), 0, 0, 0)
             labelLp.gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
-            labelLp.setMargins(dp(32), 0, dp(6), 0)
+            labelLp.setMargins(dp(6) + iconSide + dp(6), 0, dp(6), 0)
             h.label.setPadding(0, 0, 0, 0)
             h.label.textSize = 12f
             h.label.maxLines = 1
             sizeIcon(h.icon, iconSide)
         } else {
+            val iconPx = (faceH * if (t.size == Tile.SMALL) 0.52f else 0.46f)
+                .toInt()
+                .coerceAtLeast(dp(32))
             iconLp.gravity = android.view.Gravity.CENTER
-            iconLp.setMargins(0, 0, 0, 0)
+            iconLp.bottomMargin = dp(10)
+            iconLp.topMargin = 0
+            iconLp.marginStart = 0
+            iconLp.marginEnd = 0
             labelLp.gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START
             labelLp.setMargins(dp(8), 0, dp(8), dp(8))
             h.label.setPadding(0, 0, 0, 0)
-            h.label.textSize = if (t.size == Tile.SMALL) 10f else 12f
+            h.label.textSize = if (t.size == Tile.SMALL) 11f else 13f
             sizeIcon(h.icon, iconPx)
         }
         h.icon.layoutParams = iconLp

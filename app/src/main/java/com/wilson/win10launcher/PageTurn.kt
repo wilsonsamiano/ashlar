@@ -2,7 +2,7 @@ package com.wilson.win10launcher
 
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
-import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
 import android.app.Activity
 import android.content.Intent
 import android.os.Build
@@ -41,7 +41,9 @@ object PageTurn {
     private const val IN_MS = 350L
     private const val SLIDE_MS = 280L
     private const val EXPO = 6f
-    private const val PUSH_MS = 90L
+    private const val PUSH_MS = 60L
+    private const val FEATHER_OUT = 180L
+    private const val FEATHER_IN = 220L
 
     /** Left hinge. Negative: Android's positive rotationY is the mirror of WP7. */
     private const val OPEN = -72f
@@ -49,7 +51,7 @@ object PageTurn {
     /** Left hinge of the screen, and the vertical middle. Same point for every tile. */
     private class Hinge(val x: Float, val y: Float, val pageW: Float)
 
-    private val spins = HashMap<View, ObjectAnimator>()
+    private var wave: ValueAnimator? = null
 
     fun noSystemAnim(activity: Activity) {
         if (Build.VERSION.SDK_INT >= 34) {
@@ -151,16 +153,22 @@ object PageTurn {
             then()
             return
         }
+        wave?.cancel()
         val loc = IntArray(2)
         tapped.getLocationOnScreen(loc)
         val ox = loc[0] + tapped.width / 2f
         val oy = loc[1] + tapped.height / 2f
-        tapped.animate().cancel()
+        for (face in faces) {
+            face.animate().cancel()
+            face.rotationX = 0f
+            face.rotationY = 0f
+            face.scaleX = 1f
+            face.scaleY = 1f
+        }
+        unclip(grid)
         tapped.animate()
             .scaleX(0.9f)
             .scaleY(0.9f)
-            .rotationX(0f)
-            .rotationY(0f)
             .setStartDelay(0L)
             .setDuration(PUSH_MS)
             .setInterpolator(android.view.animation.DecelerateInterpolator())
@@ -170,48 +178,46 @@ object PageTurn {
                     return@withEndAction
                 }
                 val hinge = pageHinge(grid)
-                var maxDelay = 0L
+                val tiles = ArrayList<TileSpin>(faces.size)
                 for (face in facesOf(grid)) {
-                    val origin = face === tapped
-                    val delay = featherDelay(face, ox, oy, origin, leaving = true)
-                    if (delay > maxDelay) maxDelay = delay
                     face.rotationX = 0f
                     face.rotationY = 0f
                     face.scaleX = 1f
                     face.scaleY = 1f
                     hingeFace(face, hinge)
-                    spinY(face, OPEN, delay, OUT_MS, easeOut = false, end = null)
+                    tiles.add(TileSpin(face, featherDelay(face, ox, oy, face === tapped, true)))
                 }
-                grid.postDelayed({ then() }, maxDelay + OUT_MS)
+                playWave(tiles, 0f, OPEN, FEATHER_OUT, easeOut = false, end = then)
             }
             .start()
     }
 
-    /**
-     * Start is coming back. Pose every visible tile on that same left hinge,
-     * already folded, then unfold. The tapped area leads.
-     */
     fun featherReturn(grid: RecyclerView, ox: Float, oy: Float) {
         onPreDraw(grid) {
+            wave?.cancel()
+            unclip(grid)
             val hinge = pageHinge(grid)
-            for (face in facesOf(grid)) {
+            val faces = facesOf(grid)
+            val tiles = ArrayList<TileSpin>(faces.size)
+            for (face in faces) {
                 face.rotationX = 0f
                 face.rotationY = 0f
                 face.scaleX = 1f
                 face.scaleY = 1f
                 hingeFace(face, hinge)
                 face.rotationY = OPEN
-                val delay = featherDelay(face, ox, oy, origin = false, leaving = false)
-                spinY(face, 0f, delay, IN_MS, easeOut = true) {
-                    releaseFace(face, cancel = false)
-                }
+                tiles.add(TileSpin(face, featherDelay(face, ox, oy, origin = false, leaving = false)))
+            }
+            playWave(tiles, OPEN, 0f, FEATHER_IN, easeOut = true) {
+                for (face in faces) releaseFace(face)
             }
         }
     }
 
-    /** Snap tiles flat if the launch failed. */
     fun featherReset(grid: RecyclerView) {
-        for (face in facesOf(grid)) releaseFace(face, cancel = true)
+        wave?.cancel()
+        wave = null
+        for (face in facesOf(grid)) releaseFace(face)
     }
 
     fun slideAwayRight(page: View, then: () -> Unit) {
@@ -265,43 +271,41 @@ object PageTurn {
         val step = face.resources.displayMetrics.density * 96f
         return if (leaving) {
             // Tight wave. A long gap makes the page fall apart into separate doors.
-            (dist / step * 32f).toLong().coerceAtMost(140L)
+            (dist / step * 18f).toLong().coerceAtMost(70L)
         } else {
-            (dist / step * 18f).toLong().coerceAtMost(90L)
+            (dist / step * 12f).toLong().coerceAtMost(40L)
         }
     }
 
-    /** Same hinge as the whole-page turn, so the tiles stay one sheet. */
-    private fun hingeFace(face: View, hinge: Hinge) {
-        var p = face.parent
-        while (p is ViewGroup) {
-            p.clipChildren = false
-            p.clipToPadding = false
-            if (p.id == android.R.id.content) break
-            p = p.parent
-        }
-        val loc = IntArray(2)
-        face.getLocationOnScreen(loc)
-        face.setLayerType(View.LAYER_TYPE_HARDWARE, null)
-        face.pivotX = hinge.x - loc[0]
-        face.pivotY = hinge.y - loc[1]
-        face.cameraDistance = hinge.pageW * 4.8f
-    }
+    private class TileSpin(val face: View, val delay: Long)
 
-    private fun spinY(
-        face: View,
-        toDeg: Float,
-        delay: Long,
+    /** One clock for every tile. A layer per tile is what made this hitch. */
+    private fun playWave(
+        tiles: List<TileSpin>,
+        from: Float,
+        to: Float,
         ms: Long,
         easeOut: Boolean,
         end: (() -> Unit)?
     ) {
-        spins.remove(face)?.cancel()
-        face.animate().cancel()
-        val anim = ObjectAnimator.ofFloat(face, View.ROTATION_Y, face.rotationY, toDeg)
-        anim.startDelay = delay
-        anim.duration = ms
-        anim.interpolator = ExpoEase(EXPO, easeOut)
+        wave?.cancel()
+        if (tiles.isEmpty()) {
+            end?.invoke()
+            return
+        }
+        val ease = ExpoEase(EXPO, easeOut)
+        var maxDelay = 0L
+        for (t in tiles) if (t.delay > maxDelay) maxDelay = t.delay
+        val anim = ValueAnimator.ofFloat(0f, 1f)
+        anim.duration = maxDelay + ms
+        anim.addUpdateListener {
+            val now = anim.currentPlayTime
+            for (t in tiles) {
+                val u = if (now <= t.delay) 0f
+                else ((now - t.delay).toFloat() / ms.toFloat()).coerceIn(0f, 1f)
+                t.face.rotationY = from + (to - from) * ease.getInterpolation(u)
+            }
+        }
         anim.addListener(object : AnimatorListenerAdapter() {
             private var cancelled = false
             override fun onAnimationCancel(animation: Animator) {
@@ -309,20 +313,36 @@ object PageTurn {
             }
 
             override fun onAnimationEnd(animation: Animator) {
-                if (spins[face] === anim) spins.remove(face)
+                if (wave === anim) wave = null
                 if (!cancelled) end?.invoke()
             }
         })
-        spins[face] = anim
+        wave = anim
         anim.start()
     }
 
-    private fun releaseFace(face: View, cancel: Boolean) {
-        val running = spins.remove(face)
-        if (cancel) running?.cancel()
-        if (cancel) face.animate().cancel()
-        face.animate().setStartDelay(0L)
-        face.animate().setInterpolator(android.view.animation.DecelerateInterpolator())
+    private fun unclip(grid: RecyclerView) {
+        var p: android.view.ViewParent? = grid
+        while (p is ViewGroup) {
+            p.clipChildren = false
+            p.clipToPadding = false
+            if (p.id == android.R.id.content) break
+            p = p.parent
+        }
+    }
+
+    /** Same hinge as the whole-page turn, so the tiles stay one sheet. No offscreen layer. */
+    private fun hingeFace(face: View, hinge: Hinge) {
+        val loc = IntArray(2)
+        face.getLocationOnScreen(loc)
+        face.setLayerType(View.LAYER_TYPE_NONE, null)
+        face.pivotX = hinge.x - loc[0]
+        face.pivotY = hinge.y - loc[1]
+        face.cameraDistance = hinge.pageW * 4.8f
+    }
+
+    private fun releaseFace(face: View) {
+        face.animate().cancel()
         face.rotationX = 0f
         face.rotationY = 0f
         face.scaleX = 1f
