@@ -8,9 +8,8 @@ import android.view.animation.AccelerateInterpolator
 import android.view.animation.DecelerateInterpolator
 
 /**
- * Book-page turn. The pose is applied before the first draw, and the swing
- * starts only once the window is on screen. scaleX from the left spine is
- * included so the turn still shows on tablets where 3D rotation is ignored.
+ * The page you are already looking at turns on its left edge and slides left.
+ * That motion runs before the next screen opens, so it cannot finish off-screen.
  */
 object PageTurn {
 
@@ -23,28 +22,57 @@ object PageTurn {
         activity.overridePendingTransition(0, 0)
     }
 
-    /** Closed book: a sliver on the left edge. Call before the first draw. */
-    fun poseClosed(page: View) {
+    /** Turn the current page and slide it off to the left, then continue. */
+    fun slideLeft(page: View, then: () -> Unit) {
         hinge(page)
-        page.scaleX = 0.06f
-        page.rotationY = 72f
-        page.alpha = 0.55f
+        page.animate().cancel()
+        val w = width(page)
+        page.animate()
+            .translationX(-w * 0.92f)
+            .rotationY(-58f)
+            .setDuration(520)
+            .setInterpolator(AccelerateInterpolator(1.15f))
+            .withEndAction { then() }
+            .start()
     }
 
-    /** Swing the page flat. Call from onWindowFocusChanged so it is visible. */
-    fun startOpen(page: View) {
+    /** Bring a page back from the left after an app closes. */
+    fun slideBack(page: View) {
+        hinge(page)
+        val w = width(page)
+        if (page.translationX > -8f) {
+            page.translationX = -w * 0.92f
+            page.rotationY = -58f
+        }
+        page.animate().cancel()
+        page.animate()
+            .translationX(0f)
+            .rotationY(0f)
+            .setDuration(460)
+            .setInterpolator(DecelerateInterpolator(1.5f))
+            .start()
+    }
+
+    /** Next page waits to the right, turned, until the window is visible. */
+    fun poseRight(page: View) {
+        hinge(page)
+        page.translationX = width(page) * 0.88f
+        page.rotationY = 46f
+    }
+
+    fun settle(page: View) {
         hinge(page)
         page.animate().cancel()
         page.animate()
-            .scaleX(1f)
+            .translationX(0f)
             .rotationY(0f)
-            .alpha(1f)
-            .setDuration(680)
+            .setDuration(500)
             .setInterpolator(DecelerateInterpolator(1.6f))
             .start()
     }
 
-    fun playClose(page: View, then: () -> Unit) {
+    /** Close the book: this page slides back to the right. */
+    fun slideRight(page: View, then: () -> Unit) {
         var done = false
         fun once() {
             if (done) return
@@ -54,14 +82,18 @@ object PageTurn {
         hinge(page)
         page.animate().cancel()
         page.animate()
-            .scaleX(0.06f)
-            .rotationY(72f)
-            .alpha(0.4f)
+            .translationX(width(page) * 0.9f)
+            .rotationY(50f)
             .setDuration(420)
-            .setInterpolator(AccelerateInterpolator(1.3f))
+            .setInterpolator(AccelerateInterpolator(1.2f))
             .withEndAction { once() }
             .start()
-        page.postDelayed({ once() }, 700)
+        page.postDelayed({ once() }, 650)
+    }
+
+    private fun width(page: View): Float {
+        return if (page.width > 0) page.width.toFloat()
+        else page.resources.displayMetrics.widthPixels.toFloat()
     }
 
     private fun hinge(page: View) {
@@ -76,7 +108,8 @@ object PageTurn {
             page.clipToPadding = false
         }
         page.pivotX = 0f
-        page.pivotY = if (page.height > 0) page.height / 2f else page.resources.displayMetrics.heightPixels / 2f
-        page.cameraDistance = page.resources.displayMetrics.density * 2400f
+        page.pivotY = if (page.height > 0) page.height / 2f
+        else page.resources.displayMetrics.heightPixels / 2f
+        page.cameraDistance = page.resources.displayMetrics.density * 2200f
     }
 }

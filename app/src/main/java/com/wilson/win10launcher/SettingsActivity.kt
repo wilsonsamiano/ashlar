@@ -38,7 +38,7 @@ class SettingsActivity : AppCompatActivity() {
         setContentView(R.layout.activity_settings)
         val page = findViewById<View>(android.R.id.content)
         page.setBackgroundColor(prefs.bgColor())
-        if (savedInstanceState == null) PageTurn.poseClosed(page)
+        if (savedInstanceState == null) PageTurn.poseRight(page)
         title = "Launcher settings"
 
         findViewById<View>(R.id.root).setBackgroundColor(prefs.bgColor())
@@ -153,7 +153,7 @@ class SettingsActivity : AppCompatActivity() {
         super.onWindowFocusChanged(hasFocus)
         if (!hasFocus || turnPlayed) return
         turnPlayed = true
-        PageTurn.startOpen(findViewById(android.R.id.content))
+        PageTurn.settle(findViewById(android.R.id.content))
     }
 
     private var closing = false
@@ -162,7 +162,7 @@ class SettingsActivity : AppCompatActivity() {
         if (closing) return
         closing = true
         val page = findViewById<View>(android.R.id.content)
-        PageTurn.playClose(page) {
+        PageTurn.slideRight(page) {
             super.finish()
             PageTurn.noSystemAnim(this)
         }

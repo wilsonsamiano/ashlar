@@ -21,6 +21,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var editBanner: TextView
     private lateinit var editBtn: Button
     private val cols = Tile.GRID
+    private var turnedAway = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         prefs = Prefs(this)
@@ -62,11 +63,24 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refresh()
+        if (turnedAway) {
+            turnedAway = false
+            PageTurn.slideBack(findViewById(R.id.root))
+        }
     }
 
     private fun open(intent: Intent) {
-        startActivity(intent)
-        PageTurn.noSystemAnim(this)
+        turnAway {
+            startActivity(intent)
+            PageTurn.noSystemAnim(this)
+        }
+    }
+
+    /** The Start page turns on the left edge and slides left, then [then] runs. */
+    private fun turnAway(then: () -> Unit) {
+        if (turnedAway) return
+        turnedAway = true
+        PageTurn.slideLeft(findViewById(R.id.root), then)
     }
 
     private fun refresh() {
@@ -100,18 +114,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun launchTile(t: Tile, view: View) {
-        try {
-            val i = Intent(Intent.ACTION_MAIN).apply {
-                component = ComponentName(t.pkg, t.cls)
-                addCategory(Intent.CATEGORY_LAUNCHER)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+        val i = Intent(Intent.ACTION_MAIN).apply {
+            component = ComponentName(t.pkg, t.cls)
+            addCategory(Intent.CATEGORY_LAUNCHER)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+        }
+        turnAway {
+            try {
+                startActivity(i)
+                PageTurn.noSystemAnim(this)
+            } catch (e: Exception) {
+                turnedAway = false
+                PageTurn.slideBack(findViewById(R.id.root))
+                Toast.makeText(this, "Can't open ${t.label}", Toast.LENGTH_SHORT).show()
             }
-            val opts = android.app.ActivityOptions.makeScaleUpAnimation(
-                view, 0, 0, view.width, view.height
-            )
-            startActivity(i, opts.toBundle())
-        } catch (e: Exception) {
-            Toast.makeText(this, "Can't open ${t.label}", Toast.LENGTH_SHORT).show()
         }
     }
 

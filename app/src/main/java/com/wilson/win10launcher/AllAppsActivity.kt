@@ -45,7 +45,7 @@ class AllAppsActivity : AppCompatActivity() {
         setContentView(R.layout.activity_all_apps)
         val page = findViewById<View>(android.R.id.content)
         page.setBackgroundColor(prefs.bgColor())
-        if (savedInstanceState == null) PageTurn.poseClosed(page)
+        if (savedInstanceState == null) PageTurn.poseRight(page)
         pickMode = intent.getBooleanExtra("pick", false)
         val titleBar = findViewById<TextView>(R.id.titleBar)
         titleBar.text = if (pickMode) "Tap an app to pin it" else "All apps"
@@ -196,29 +196,42 @@ class AllAppsActivity : AppCompatActivity() {
         }
     }
 
+    private var turnedAway = false
+
     private fun launchApp(app: AppList.App, view: View) {
-        try {
-            val i = Intent(Intent.ACTION_MAIN).apply {
-                component = ComponentName(app.pkg, app.cls)
-                addCategory(Intent.CATEGORY_LAUNCHER)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
-            }
-            val opts = android.app.ActivityOptions.makeScaleUpAnimation(
-                view, 0, 0, view.width, view.height
-            )
-            startActivity(i, opts.toBundle())
-        } catch (e: Exception) {
-            Toast.makeText(this, "Can't open ${app.label}", Toast.LENGTH_SHORT).show()
+        if (turnedAway) return
+        val i = Intent(Intent.ACTION_MAIN).apply {
+            component = ComponentName(app.pkg, app.cls)
+            addCategory(Intent.CATEGORY_LAUNCHER)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
         }
+        turnedAway = true
+        PageTurn.slideLeft(findViewById(android.R.id.content)) {
+            try {
+                startActivity(i)
+                PageTurn.noSystemAnim(this)
+            } catch (e: Exception) {
+                turnedAway = false
+                PageTurn.slideBack(findViewById(android.R.id.content))
+                Toast.makeText(this, "Can't open ${app.label}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (!turnedAway) return
+        turnedAway = false
+        PageTurn.slideBack(findViewById(android.R.id.content))
     }
 
     private var turnPlayed = false
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (!hasFocus || turnPlayed) return
+        if (!hasFocus || turnPlayed || turnedAway) return
         turnPlayed = true
-        PageTurn.startOpen(findViewById(android.R.id.content))
+        PageTurn.settle(findViewById(android.R.id.content))
     }
 
     private var closing = false
@@ -226,8 +239,7 @@ class AllAppsActivity : AppCompatActivity() {
     override fun finish() {
         if (closing) return
         closing = true
-        val page = findViewById<View>(android.R.id.content)
-        PageTurn.playClose(page) {
+        PageTurn.slideRight(findViewById(android.R.id.content)) {
             super.finish()
             PageTurn.noSystemAnim(this)
         }
