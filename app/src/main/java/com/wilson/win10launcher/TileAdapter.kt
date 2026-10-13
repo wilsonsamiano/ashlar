@@ -21,7 +21,7 @@ data class Tile(val pkg: String, val cls: String, val label: String, var size: I
         const val SMALL = 0
         const val MEDIUM = 1
         const val WIDE = 2
-        /** Half the width and height of a small tile. */
+        /** Same width as a small tile, half the height. */
         const val HALF = 3
         /** 12 columns so a half tile is one cell and a small tile stays 2x2. */
         const val GRID = 12
@@ -29,22 +29,22 @@ data class Tile(val pkg: String, val cls: String, val label: String, var size: I
         fun span(size: Int, totalCols: Int = GRID) = when (size) {
             WIDE -> totalCols
             MEDIUM -> 4
-            SMALL -> 2
-            else -> 1
+            else -> 2 // small and half share the small tile's width
         }
 
         fun rows(size: Int) = when (size) {
             WIDE -> 4
             MEDIUM -> 4
-            SMALL -> 2
-            else -> 1
+            HALF -> 1
+            else -> 2
         }
     }
 }
 
 /**
- * Start-screen tile grid. Half=1x1, small=2x2, medium=4x4, wide=full width x4
- * on a 12-column grid (same visual sizes as the old 6-column layout, plus half).
+ * Start-screen tile grid. Half is a small tile cut in half horizontally
+ * (same width, half height). Small=2x2, medium=4x4, wide=full width x4
+ * on a 12-column grid.
  * A null item at the end renders the "+" pin-new-app tile.
  */
 class TileAdapter(
@@ -158,6 +158,10 @@ class TileAdapter(
             h.root.layoutParams = lp
             h.root.background = ColorDrawable(darken(accent, 0.75f))
             sizeIcon(h.icon, dp(28))
+            (h.icon.layoutParams as FrameLayout.LayoutParams).apply {
+                gravity = android.view.Gravity.CENTER
+                marginStart = 0
+            }
             h.icon.setImageResource(android.R.drawable.ic_input_add)
             h.icon.imageTintList = ColorStateList.valueOf(Color.WHITE)
             h.label.text = ""
@@ -175,11 +179,32 @@ class TileAdapter(
         h.root.background = rippleBg(accent)
         h.icon.imageTintList = null
         val iconPx = when (t.size) {
-            Tile.HALF -> dp(16)
+            Tile.HALF -> dp(18)
             Tile.SMALL -> dp(26)
             Tile.MEDIUM -> dp(42)
             else -> dp(48)
         }
+        val iconLp = h.icon.layoutParams as FrameLayout.LayoutParams
+        val labelLp = h.label.layoutParams as FrameLayout.LayoutParams
+        if (t.size == Tile.HALF) {
+            iconLp.gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
+            iconLp.marginStart = dp(6)
+            labelLp.gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
+            labelLp.marginStart = dp(28)
+            labelLp.bottomMargin = 0
+            h.label.setPadding(0, 0, dp(4), 0)
+            h.label.textSize = 11f
+        } else {
+            iconLp.gravity = android.view.Gravity.CENTER
+            iconLp.marginStart = 0
+            labelLp.gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START
+            labelLp.marginStart = 0
+            labelLp.bottomMargin = dp(8)
+            h.label.setPadding(0, 0, 0, 0)
+            h.label.textSize = if (t.size == Tile.SMALL) 10f else 12f
+        }
+        h.icon.layoutParams = iconLp
+        h.label.layoutParams = labelLp
         sizeIcon(h.icon, iconPx)
         try {
             h.icon.setImageDrawable(
@@ -188,13 +213,8 @@ class TileAdapter(
         } catch (e: Exception) {
             h.icon.setImageDrawable(null)
         }
-        if (t.size == Tile.HALF) {
-            h.label.visibility = View.GONE
-        } else {
-            h.label.visibility = View.VISIBLE
-            h.label.text = t.label
-            h.label.textSize = if (t.size == Tile.SMALL) 10f else 12f
-        }
+        h.label.visibility = View.VISIBLE
+        h.label.text = t.label
         h.root.setOnClickListener {
             if (editMode) onAction(Action.Options(t, h.root))
             else onAction(Action.Launch(t, h.root))

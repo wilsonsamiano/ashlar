@@ -8,7 +8,7 @@ Beta for sideload. Package `com.wilson.win10launcher`, so it will not clash with
 
 ## Download the beta
 
-**[Win10Launcher-1.5.apk](https://github.com/wilsonsamiano/win10-launcher/releases/download/v1.5.0-beta/Win10Launcher-1.5.apk)** — version 1.5 (versionCode 6)
+**[Win10Launcher-1.6.apk](https://github.com/wilsonsamiano/win10-launcher/releases/download/v1.6.0-beta/Win10Launcher-1.6.apk)** — version 1.6 (versionCode 7)
 
 1. Download the APK onto the tablet (Onn 8.1 and other Android 8+ devices).
 2. Open it and allow install from that source if Android asks.
@@ -19,7 +19,7 @@ Beta for sideload. Package `com.wilson.win10launcher`, so it will not clash with
 
 - Start screen: half, small, medium, and wide tiles in the accent color
 - **Edit** rearranges the layout: long-press and drag tiles, tap a tile to resize or unpin
-- Half tile is half the width and height of a small tile
+- Half tile is the same width as a small tile and half the height
 - Press a tile and it tilts toward your finger, then springs back
 - Tap a tile or an app and it zooms into that app
 - All apps and Settings turn in like a Windows Phone 7 book page, and turn back when you leave
