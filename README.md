@@ -8,7 +8,7 @@ Beta for sideload. Package `com.wilson.win10launcher`, so it will not clash with
 
 ## Download the beta
 
-**[Win10Launcher-2.14.apk](https://github.com/wilsonsamiano/win10-launcher/releases/download/v2.14.0-beta/Win10Launcher-2.14.apk)** — version 2.14 (versionCode 25)
+**[Win10Launcher-2.15.apk](https://github.com/wilsonsamiano/win10-launcher/releases/download/v2.15.0-beta/Win10Launcher-2.15.apk)** — version 2.15 (versionCode 26)
 
 1. Download the APK onto the tablet (Onn 8.1 and other Android 8+ devices).
 2. Open it and allow install from that source if Android asks.

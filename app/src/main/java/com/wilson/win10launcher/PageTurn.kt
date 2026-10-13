@@ -37,13 +37,14 @@ import kotlin.math.hypot
  */
 object PageTurn {
 
-    private const val OUT_MS = 260L
-    private const val IN_MS = 350L
-    private const val SLIDE_MS = 280L
+    private const val OUT_MS = 360L
+    private const val IN_MS = 460L
+    private const val SLIDE_MS = 360L
     private const val EXPO = 6f
-    private const val PUSH_MS = 60L
-    private const val FEATHER_OUT = 180L
-    private const val FEATHER_IN = 220L
+    private const val PUSH_MS = 90L
+    /** Long enough that a 60Hz screen paints the turn, still one animator. */
+    private const val FEATHER_OUT = 340L
+    private const val FEATHER_IN = 420L
 
     /** Left hinge. Negative: Android's positive rotationY is the mirror of WP7. */
     private const val OPEN = -72f

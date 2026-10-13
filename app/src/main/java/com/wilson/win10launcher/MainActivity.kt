@@ -122,7 +122,7 @@ class MainActivity : AppCompatActivity() {
             Leave.TURN -> PageTurn.returnTurn(page)
             Leave.FEATHER -> {
                 PageTurn.featherReturn(grid, featherX, featherY)
-                grid.postDelayed({ adapter.featherHold = false }, 560L)
+                grid.postDelayed({ adapter.featherHold = false }, 720L)
             }
             Leave.NONE -> Unit
         }
