@@ -15,11 +15,26 @@ object PageTurn {
 
     fun noSystemAnim(activity: Activity) {
         if (Build.VERSION.SDK_INT >= 34) {
-            activity.overrideActivityTransition(Activity.OVERRIDE_TRANSITION_OPEN, 0, 0)
-            activity.overrideActivityTransition(Activity.OVERRIDE_TRANSITION_CLOSE, 0, 0)
+            activity.overrideActivityTransition(
+                Activity.OVERRIDE_TRANSITION_OPEN, R.anim.none, R.anim.none
+            )
+            activity.overrideActivityTransition(
+                Activity.OVERRIDE_TRANSITION_CLOSE, R.anim.none, R.anim.none
+            )
         }
         @Suppress("DEPRECATION")
-        activity.overridePendingTransition(0, 0)
+        activity.overridePendingTransition(R.anim.none, R.anim.none)
+    }
+
+    /** No system zoom and no slide-from-the-right when another app opens. */
+    fun appOptions(activity: Activity): android.os.Bundle {
+        val opts = android.app.ActivityOptions.makeCustomAnimation(
+            activity, R.anim.none, R.anim.none
+        )
+        if (Build.VERSION.SDK_INT >= 33) {
+            opts.setSplashScreenStyle(0)
+        }
+        return opts.toBundle()
     }
 
     /** Turn the current page and slide it off to the left, then continue. */
@@ -53,11 +68,11 @@ object PageTurn {
             .start()
     }
 
-    /** Next page waits to the right, turned, until the window is visible. */
+    /** Next page is already hinged open. No slide in from the right. */
     fun poseRight(page: View) {
         hinge(page)
-        page.translationX = width(page) * 0.88f
-        page.rotationY = 46f
+        page.translationX = 0f
+        page.rotationY = 76f
     }
 
     fun settle(page: View) {
@@ -71,7 +86,7 @@ object PageTurn {
             .start()
     }
 
-    /** Close the book: this page slides back to the right. */
+    /** Close the book on the left hinge. Does not slide sideways. */
     fun slideRight(page: View, then: () -> Unit) {
         var done = false
         fun once() {
@@ -82,8 +97,8 @@ object PageTurn {
         hinge(page)
         page.animate().cancel()
         page.animate()
-            .translationX(width(page) * 0.9f)
-            .rotationY(50f)
+            .translationX(0f)
+            .rotationY(76f)
             .setDuration(420)
             .setInterpolator(AccelerateInterpolator(1.2f))
             .withEndAction { once() }
@@ -110,6 +125,6 @@ object PageTurn {
         page.pivotX = 0f
         page.pivotY = if (page.height > 0) page.height / 2f
         else page.resources.displayMetrics.heightPixels / 2f
-        page.cameraDistance = page.resources.displayMetrics.density * 2200f
+        page.cameraDistance = page.resources.displayMetrics.density * 9000f
     }
 }

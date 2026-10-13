@@ -3,6 +3,7 @@ package com.wilson.win10launcher
 import android.content.ComponentName
 import android.content.Intent
 import android.os.Bundle
+import android.view.MotionEvent
 import android.view.View
 import android.widget.Button
 import android.widget.PopupMenu
@@ -40,6 +41,7 @@ class MainActivity : AppCompatActivity() {
         grid.layoutManager = lm
         grid.adapter = adapter
         ItemTouchHelper(dragCallback()).attachToRecyclerView(grid)
+        grid.addOnItemTouchListener(swipeAllApps())
 
         editBtn.setOnClickListener {
             adapter.editMode = !adapter.editMode
@@ -104,6 +106,57 @@ class MainActivity : AppCompatActivity() {
     private fun dp(n: Int): Int =
         (n * resources.displayMetrics.density).toInt()
 
+    /** Swipe the Start page left to open All apps, same direction as the page turn. */
+    private fun swipeAllApps() = object : RecyclerView.SimpleOnItemTouchListener() {
+        private var downX = 0f
+        private var downY = 0f
+        private var dragging = false
+
+        override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
+            if (adapter.editMode || turnedAway) return false
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = e.x
+                    downY = e.y
+                    dragging = false
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = e.x - downX
+                    val dy = e.y - downY
+                    if (dx < -dp(28) && kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.5f) {
+                        dragging = true
+                        findViewById<View>(R.id.root).animate().cancel()
+                        return true
+                    }
+                }
+            }
+            return false
+        }
+
+        override fun onTouchEvent(rv: RecyclerView, e: MotionEvent) {
+            val page = findViewById<View>(R.id.root)
+            val w = page.width.coerceAtLeast(1).toFloat()
+            val dx = (e.x - downX).coerceAtMost(0f)
+            when (e.actionMasked) {
+                MotionEvent.ACTION_MOVE -> {
+                    page.pivotX = 0f
+                    page.pivotY = page.height / 2f
+                    page.cameraDistance = resources.displayMetrics.density * 9000f
+                    page.translationX = dx.coerceAtLeast(-w * 0.9f)
+                    page.rotationY = page.translationX / w * 60f
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    dragging = false
+                    if (e.actionMasked == MotionEvent.ACTION_UP && page.translationX < -w * 0.22f) {
+                        open(Intent(this@MainActivity, AllAppsActivity::class.java))
+                    } else {
+                        page.animate().translationX(0f).rotationY(0f).setDuration(180).start()
+                    }
+                }
+            }
+        }
+    }
+
     private fun handle(a: TileAdapter.Action) {
         when (a) {
             is TileAdapter.Action.Launch -> launchTile(a.tile, a.view)
@@ -121,8 +174,7 @@ class MainActivity : AppCompatActivity() {
         }
         turnAway {
             try {
-                startActivity(i)
-                PageTurn.noSystemAnim(this)
+                startActivity(i, PageTurn.appOptions(this))
             } catch (e: Exception) {
                 turnedAway = false
                 PageTurn.slideBack(findViewById(R.id.root))

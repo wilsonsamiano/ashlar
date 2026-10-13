@@ -144,17 +144,15 @@ class TileAdapter(
         h.root.scaleX = 1f
         h.root.scaleY = 1f
         h.root.elevation = if (editMode) dp(2).toFloat() else 0f
-        val dm = ctx.resources.displayMetrics
-        val totalCols = Tile.GRID
         val gap = dp(2)
-        val unit = (dm.widthPixels - dp(16)) / totalCols
+        val unit = cellSize(h.root)
         val lp = h.root.layoutParams as RecyclerView.LayoutParams
         lp.setMargins(gap, gap, gap, gap)
 
         if (t == null) {
-            val s = Tile.span(Tile.SMALL)
-            lp.width = unit * s - gap * 2
-            lp.height = unit * s - gap * 2
+            val s = Tile.rows(Tile.SMALL)
+            lp.width = ViewGroup.LayoutParams.MATCH_PARENT
+            lp.height = (unit * s - gap * 2).coerceAtLeast(dp(36))
             h.root.layoutParams = lp
             h.root.background = ColorDrawable(darken(accent, 0.75f))
             sizeIcon(h.icon, dp(28))
@@ -171,10 +169,9 @@ class TileAdapter(
             return
         }
 
-        val cols = Tile.span(t.size, totalCols)
         val rows = Tile.rows(t.size)
-        lp.width = unit * cols - gap * 2
-        lp.height = unit * rows - gap * 2
+        lp.width = ViewGroup.LayoutParams.MATCH_PARENT
+        lp.height = (unit * rows - gap * 2).coerceAtLeast(if (t.size == Tile.HALF) dp(32) else dp(36))
         h.root.layoutParams = lp
         h.root.background = rippleBg(accent)
         h.icon.imageTintList = null
@@ -187,25 +184,26 @@ class TileAdapter(
         val iconLp = h.icon.layoutParams as FrameLayout.LayoutParams
         val labelLp = h.label.layoutParams as FrameLayout.LayoutParams
         if (t.size == Tile.HALF) {
+            val iconSide = dp(18).coerceAtMost((lp.height * 0.7f).toInt().coerceAtLeast(dp(12)))
             iconLp.gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
-            iconLp.marginStart = dp(6)
+            iconLp.setMargins(dp(8), 0, 0, 0)
             labelLp.gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
-            labelLp.marginStart = dp(28)
-            labelLp.bottomMargin = 0
-            h.label.setPadding(0, 0, dp(4), 0)
-            h.label.textSize = 11f
+            labelLp.setMargins(dp(32), 0, dp(6), 0)
+            h.label.setPadding(0, 0, 0, 0)
+            h.label.textSize = 12f
+            h.label.maxLines = 1
+            sizeIcon(h.icon, iconSide)
         } else {
             iconLp.gravity = android.view.Gravity.CENTER
-            iconLp.marginStart = 0
+            iconLp.setMargins(0, 0, 0, 0)
             labelLp.gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START
-            labelLp.marginStart = 0
-            labelLp.bottomMargin = dp(8)
+            labelLp.setMargins(dp(8), 0, dp(8), dp(8))
             h.label.setPadding(0, 0, 0, 0)
             h.label.textSize = if (t.size == Tile.SMALL) 10f else 12f
+            sizeIcon(h.icon, iconPx)
         }
         h.icon.layoutParams = iconLp
         h.label.layoutParams = labelLp
-        sizeIcon(h.icon, iconPx)
         try {
             h.icon.setImageDrawable(
                 ctx.packageManager.getActivityIcon(ComponentName(t.pkg, t.cls))
@@ -229,6 +227,16 @@ class TileAdapter(
         }
     }
 
+    private fun cellSize(view: View): Int {
+        val parent = view.parent as? View
+        val inner = if (parent != null && parent.width > parent.paddingLeft + parent.paddingRight) {
+            parent.width - parent.paddingLeft - parent.paddingRight
+        } else {
+            ctx.resources.displayMetrics.widthPixels - dp(16)
+        }
+        return (inner / Tile.GRID).coerceAtLeast(1)
+    }
+
     private fun sizeIcon(icon: ImageView, px: Int) {
         val lp = icon.layoutParams
         if (lp.width != px || lp.height != px) {
@@ -246,13 +254,11 @@ class TileAdapter(
         val maxTilt = 11f
         val rotY = ((x - w / 2f) / (w / 2f) * maxTilt).coerceIn(-maxTilt, maxTilt)
         val rotX = ((h / 2f - y) / (h / 2f) * maxTilt).coerceIn(-maxTilt, maxTilt)
-        v.animate().rotationX(rotX).rotationY(rotY)
-            .scaleX(0.95f).scaleY(0.95f).setDuration(110).start()
+        v.animate().rotationX(rotX).rotationY(rotY).setDuration(110).start()
     }
 
     private fun untilt(v: View) {
-        v.animate().rotationX(0f).rotationY(0f)
-            .scaleX(1f).scaleY(1f).setDuration(200).start()
+        v.animate().rotationX(0f).rotationY(0f).setDuration(200).start()
     }
 
     private fun darken(c: Int, f: Float): Int {

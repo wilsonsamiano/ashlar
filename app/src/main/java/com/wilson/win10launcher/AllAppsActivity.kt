@@ -208,8 +208,7 @@ class AllAppsActivity : AppCompatActivity() {
         turnedAway = true
         PageTurn.slideLeft(findViewById(android.R.id.content)) {
             try {
-                startActivity(i)
-                PageTurn.noSystemAnim(this)
+                startActivity(i, PageTurn.appOptions(this))
             } catch (e: Exception) {
                 turnedAway = false
                 PageTurn.slideBack(findViewById(android.R.id.content))
