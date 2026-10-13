@@ -206,6 +206,8 @@ class AllAppsActivity : AppCompatActivity() {
 
     private var turnedAway = false
     private var reloadOnResume = false
+    private var featherX = 0f
+    private var featherY = 0f
 
     private fun pinApp(app: AppList.App) {
         prefs.addTile(Tile(app.pkg, app.cls, app.label, Tile.MEDIUM))
@@ -301,14 +303,18 @@ class AllAppsActivity : AppCompatActivity() {
             }
         }
         turnedAway = true
-        val page = findViewById<View>(android.R.id.content)
-        PageTurn.leaveTurn(page) {
+        val loc = IntArray(2)
+        view.getLocationOnScreen(loc)
+        featherX = loc[0] + view.width / 2f
+        featherY = loc[1] + view.height / 2f
+        PageTurn.featherOut(rv, view) {
+            if (!turnedAway) return@featherOut
             try {
                 startActivity(PageTurn.quiet(i), PageTurn.appOptions(this))
                 PageTurn.noSystemAnim(this)
             } catch (e: Exception) {
                 turnedAway = false
-                PageTurn.returnTurn(page)
+                PageTurn.featherReset(rv)
                 Toast.makeText(this, "Can't open ${app.label}", Toast.LENGTH_SHORT).show()
             }
         }
@@ -322,7 +328,7 @@ class AllAppsActivity : AppCompatActivity() {
         }
         if (!turnedAway) return
         turnedAway = false
-        PageTurn.returnTurn(findViewById(android.R.id.content))
+        PageTurn.featherReturn(rv, featherX, featherY)
     }
 
     private var closing = false
