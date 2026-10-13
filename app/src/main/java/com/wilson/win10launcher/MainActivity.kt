@@ -22,7 +22,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var editBanner: TextView
     private lateinit var editBtn: Button
     private val cols = Tile.GRID
-    private var turnedAway = false
+    private enum class Leave { NONE, SLIDE, TURN }
+    private var leave = Leave.NONE
 
     override fun onCreate(savedInstanceState: Bundle?) {
         prefs = Prefs(this)
@@ -48,10 +49,10 @@ class MainActivity : AppCompatActivity() {
             applyChrome()
         }
         findViewById<View>(R.id.allAppsBtn).setOnClickListener {
-            open(Intent(this, AllAppsActivity::class.java))
+            slideTo(Intent(this, AllAppsActivity::class.java))
         }
         findViewById<View>(R.id.settingsBtn).setOnClickListener {
-            open(Intent(this, SettingsActivity::class.java))
+            turnTo(Intent(this, SettingsActivity::class.java))
         }
         if (savedInstanceState?.getBoolean("edit") == true) adapter.editMode = true
         refresh()
@@ -65,24 +66,40 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refresh()
-        if (turnedAway) {
-            turnedAway = false
-            PageTurn.slideBack(findViewById(R.id.root))
+        val page = findViewById<View>(R.id.root)
+        when (leave) {
+            Leave.SLIDE -> PageTurn.slideBack(page)
+            Leave.TURN -> PageTurn.turnBack(page)
+            Leave.NONE -> {}
         }
+        leave = Leave.NONE
     }
 
-    private fun open(intent: Intent) {
-        turnAway {
+    private fun slideTo(intent: Intent) {
+        if (leave != Leave.NONE) return
+        leave = Leave.SLIDE
+        PageTurn.slideOff(findViewById(R.id.root)) {
             startActivity(intent)
             PageTurn.noSystemAnim(this)
         }
     }
 
-    /** The Start page turns on the left edge and slides left, then [then] runs. */
-    private fun turnAway(then: () -> Unit) {
-        if (turnedAway) return
-        turnedAway = true
-        PageTurn.slideLeft(findViewById(R.id.root), then)
+    private fun turnTo(intent: Intent, externalApp: Boolean = false) {
+        if (leave != Leave.NONE) return
+        leave = Leave.TURN
+        val page = findViewById<View>(R.id.root)
+        PageTurn.turnOut(page) {
+            try {
+                if (externalApp) startActivity(intent, PageTurn.appOptions(this))
+                else {
+                    startActivity(intent)
+                    PageTurn.noSystemAnim(this)
+                }
+            } catch (e: Exception) {
+                leave = Leave.NONE
+                PageTurn.turnBack(page)
+            }
+        }
     }
 
     private fun refresh() {
@@ -106,26 +123,26 @@ class MainActivity : AppCompatActivity() {
     private fun dp(n: Int): Int =
         (n * resources.displayMetrics.density).toInt()
 
-    /** Swipe the Start page left to open All apps, same direction as the page turn. */
+    /** Finger-follow slide into All apps. Rotation is not used here. */
     private fun swipeAllApps() = object : RecyclerView.SimpleOnItemTouchListener() {
         private var downX = 0f
         private var downY = 0f
-        private var dragging = false
 
         override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
-            if (adapter.editMode || turnedAway) return false
+            if (adapter.editMode || leave != Leave.NONE) return false
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     downX = e.x
                     downY = e.y
-                    dragging = false
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = e.x - downX
                     val dy = e.y - downY
                     if (dx < -dp(28) && kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.5f) {
-                        dragging = true
-                        findViewById<View>(R.id.root).animate().cancel()
+                        val page = findViewById<View>(R.id.root)
+                        page.animate().cancel()
+                        page.rotationY = 0f
+                        page.rotationX = 0f
                         return true
                     }
                 }
@@ -139,16 +156,13 @@ class MainActivity : AppCompatActivity() {
             val dx = (e.x - downX).coerceAtMost(0f)
             when (e.actionMasked) {
                 MotionEvent.ACTION_MOVE -> {
-                    page.pivotX = 0f
-                    page.pivotY = page.height / 2f
-                    page.cameraDistance = resources.displayMetrics.density * 9000f
-                    page.translationX = dx.coerceAtLeast(-w * 0.9f)
-                    page.rotationY = page.translationX / w * 60f
+                    page.rotationY = 0f
+                    page.rotationX = 0f
+                    page.translationX = dx.coerceAtLeast(-w)
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    dragging = false
                     if (e.actionMasked == MotionEvent.ACTION_UP && page.translationX < -w * 0.22f) {
-                        open(Intent(this@MainActivity, AllAppsActivity::class.java))
+                        slideTo(Intent(this@MainActivity, AllAppsActivity::class.java))
                     } else {
                         page.animate().translationX(0f).rotationY(0f).setDuration(180).start()
                     }
@@ -161,7 +175,7 @@ class MainActivity : AppCompatActivity() {
         when (a) {
             is TileAdapter.Action.Launch -> launchTile(a.tile, a.view)
             is TileAdapter.Action.Add ->
-                open(Intent(this, AllAppsActivity::class.java).putExtra("pick", true))
+                slideTo(Intent(this, AllAppsActivity::class.java).putExtra("pick", true))
             is TileAdapter.Action.Options -> showOptions(a.tile, a.anchor)
         }
     }
@@ -172,15 +186,7 @@ class MainActivity : AppCompatActivity() {
             addCategory(Intent.CATEGORY_LAUNCHER)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
         }
-        turnAway {
-            try {
-                startActivity(i, PageTurn.appOptions(this))
-            } catch (e: Exception) {
-                turnedAway = false
-                PageTurn.slideBack(findViewById(R.id.root))
-                Toast.makeText(this, "Can't open ${t.label}", Toast.LENGTH_SHORT).show()
-            }
-        }
+        turnTo(i, externalApp = true)
     }
 
     private fun showOptions(t: Tile, anchor: View) {

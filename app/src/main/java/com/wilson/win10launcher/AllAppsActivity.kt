@@ -39,13 +39,13 @@ class AllAppsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         prefs = Prefs(this)
-        setTheme(if (prefs.darkTheme) R.style.Theme_Win10_Dark_Page else R.style.Theme_Win10_Light_Page)
+        setTheme(if (prefs.darkTheme) R.style.Theme_Win10_Dark else R.style.Theme_Win10_Light)
         super.onCreate(savedInstanceState)
         PageTurn.noSystemAnim(this)
         setContentView(R.layout.activity_all_apps)
         val page = findViewById<View>(android.R.id.content)
         page.setBackgroundColor(prefs.bgColor())
-        if (savedInstanceState == null) PageTurn.poseRight(page)
+        if (savedInstanceState == null) PageTurn.poseSlideIn(page)
         pickMode = intent.getBooleanExtra("pick", false)
         val titleBar = findViewById<TextView>(R.id.titleBar)
         titleBar.text = if (pickMode) "Tap an app to pin it" else "All apps"
@@ -206,12 +206,13 @@ class AllAppsActivity : AppCompatActivity() {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
         }
         turnedAway = true
-        PageTurn.slideLeft(findViewById(android.R.id.content)) {
+        val page = findViewById<View>(android.R.id.content)
+        PageTurn.turnOut(page) {
             try {
                 startActivity(i, PageTurn.appOptions(this))
             } catch (e: Exception) {
                 turnedAway = false
-                PageTurn.slideBack(findViewById(android.R.id.content))
+                PageTurn.turnBack(page)
                 Toast.makeText(this, "Can't open ${app.label}", Toast.LENGTH_SHORT).show()
             }
         }
@@ -221,7 +222,7 @@ class AllAppsActivity : AppCompatActivity() {
         super.onResume()
         if (!turnedAway) return
         turnedAway = false
-        PageTurn.slideBack(findViewById(android.R.id.content))
+        PageTurn.turnBack(findViewById(android.R.id.content))
     }
 
     private var turnPlayed = false
@@ -230,7 +231,7 @@ class AllAppsActivity : AppCompatActivity() {
         super.onWindowFocusChanged(hasFocus)
         if (!hasFocus || turnPlayed || turnedAway) return
         turnPlayed = true
-        PageTurn.settle(findViewById(android.R.id.content))
+        PageTurn.settleSlide(findViewById(android.R.id.content))
     }
 
     private var closing = false
@@ -238,7 +239,7 @@ class AllAppsActivity : AppCompatActivity() {
     override fun finish() {
         if (closing) return
         closing = true
-        PageTurn.slideRight(findViewById(android.R.id.content)) {
+        PageTurn.slideAwayRight(findViewById(android.R.id.content)) {
             super.finish()
             PageTurn.noSystemAnim(this)
         }
