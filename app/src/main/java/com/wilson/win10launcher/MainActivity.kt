@@ -11,7 +11,6 @@ import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.RecyclerView
 
@@ -39,11 +38,13 @@ class MainActivity : AppCompatActivity() {
         grid = findViewById(R.id.tileGrid)
         editBanner = findViewById(R.id.editBanner)
         editBtn = findViewById(R.id.editBtn)
-        val lm = GridLayoutManager(this, cols)
-        lm.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
-            override fun getSpanSize(position: Int) = adapter.spanFor(position, cols)
-        }
-        grid.layoutManager = lm
+        grid.layoutManager = TileLayoutManager(
+            cols,
+            spanOf = { adapter.spanFor(it, cols) },
+            rowsOf = { adapter.rowsFor(it) },
+            appendAtEnd = { adapter.isAdd(it) }
+        )
+        grid.itemAnimator = null
         grid.adapter = adapter
         ItemTouchHelper(dragCallback()).attachToRecyclerView(grid)
         grid.addOnItemTouchListener(swipeAllApps())
@@ -126,7 +127,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.root).setBackgroundColor(prefs.bgColor())
         adapter.accent = prefs.accentColor
         adapter.submit(prefs.loadTiles())
-        (grid.layoutManager as GridLayoutManager).spanSizeLookup.invalidateSpanIndexCache()
+        grid.requestLayout()
         applyChrome()
     }
 
@@ -230,7 +231,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun showOptions(t: Tile, anchor: View) {
         val pm = PopupMenu(this, anchor)
-        pm.menu.add("Half tile")
         pm.menu.add("Small tile")
         pm.menu.add("Medium tile")
         pm.menu.add("Wide tile")
@@ -249,7 +249,6 @@ class MainActivity : AppCompatActivity() {
             if (idx < 0) return@setOnMenuItemClickListener true
             when (item.title.toString()) {
                 "Unpin from Start" -> tiles.removeAt(idx)
-                "Half tile" -> tiles[idx].size = Tile.HALF
                 "Small tile" -> tiles[idx].size = Tile.SMALL
                 "Medium tile" -> tiles[idx].size = Tile.MEDIUM
                 "Wide tile" -> tiles[idx].size = Tile.WIDE
@@ -300,8 +299,6 @@ class MainActivity : AppCompatActivity() {
             val from = viewHolder.bindingAdapterPosition
             val to = target.bindingAdapterPosition
             if (!adapter.move(from, to)) return false
-            (recyclerView.layoutManager as? GridLayoutManager)
-                ?.spanSizeLookup?.invalidateSpanIndexCache()
             prefs.saveTiles(adapter.tiles())
             return true
         }

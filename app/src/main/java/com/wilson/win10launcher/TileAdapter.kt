@@ -35,16 +35,15 @@ data class Tile(val pkg: String, val cls: String, val label: String, var size: I
         fun rows(size: Int) = when (size) {
             WIDE -> 4
             MEDIUM -> 4
-            HALF -> 1
-            else -> 2
+            else -> 2 // small. Half is retired and uses the same square.
         }
     }
 }
 
 /**
- * Start-screen tile grid. Half is a small tile cut in half horizontally
- * (same width, half height). Small=2x2, medium=4x4, wide=full width x4
- * on a 12-column grid.
+ * Start-screen tile grid. Small is a quarter of a medium square (2x2 cells
+ * on a 12-column grid, medium is 4x4), so four small tiles fill one square.
+ * Wide is the full width and the height of a medium tile.
  * A null item at the end renders the "+" pin-new-app tile.
  */
 class TileAdapter(
@@ -95,6 +94,11 @@ class TileAdapter(
     fun spanFor(position: Int, totalCols: Int): Int {
         val t = items.getOrNull(position) ?: return Tile.span(Tile.SMALL, totalCols)
         return Tile.span(t.size, totalCols)
+    }
+
+    fun rowsFor(position: Int): Int {
+        val t = items.getOrNull(position) ?: return Tile.rows(Tile.SMALL)
+        return Tile.rows(t.size)
     }
 
     class VH(v: View) : RecyclerView.ViewHolder(v) {
@@ -163,18 +167,15 @@ class TileAdapter(
         lp.setMargins(gap, gap, gap, gap)
 
         val rows = if (t == null) Tile.rows(Tile.SMALL) else Tile.rows(t.size)
-        val faceH = (unit * rows - gap * 2).coerceAtLeast(if (t?.size == Tile.HALF) dp(36) else dp(36))
-        // Root height is what the grid measures first. The grid then stretches every
-        // tile in the row to the tallest one, which turned quarter tiles into tall slices.
-        // The face keeps the real height and stays at the top of that cell.
+        val faceH = (unit * rows - gap * 2).coerceAtLeast(dp(36))
         lp.width = ViewGroup.LayoutParams.MATCH_PARENT
-        lp.height = faceH
+        lp.height = ViewGroup.LayoutParams.MATCH_PARENT
         h.root.layoutParams = lp
         h.root.background = null
         h.root.isClickable = false
         val faceLp = h.face.layoutParams as FrameLayout.LayoutParams
         faceLp.width = ViewGroup.LayoutParams.MATCH_PARENT
-        faceLp.height = faceH
+        faceLp.height = ViewGroup.LayoutParams.MATCH_PARENT
         faceLp.gravity = android.view.Gravity.TOP
         h.face.layoutParams = faceLp
 
@@ -197,31 +198,19 @@ class TileAdapter(
         h.icon.imageTintList = null
         val iconLp = h.icon.layoutParams as FrameLayout.LayoutParams
         val labelLp = h.label.layoutParams as FrameLayout.LayoutParams
-        if (t.size == Tile.HALF) {
-            val iconSide = (faceH * 0.70f).toInt().coerceIn(dp(18), dp(40))
-            iconLp.gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
-            iconLp.setMargins(dp(6), 0, 0, 0)
-            labelLp.gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
-            labelLp.setMargins(dp(6) + iconSide + dp(6), 0, dp(6), 0)
-            h.label.setPadding(0, 0, 0, 0)
-            h.label.textSize = 12f
-            h.label.maxLines = 1
-            sizeIcon(h.icon, iconSide)
-        } else {
-            val iconPx = (faceH * if (t.size == Tile.SMALL) 0.52f else 0.46f)
-                .toInt()
-                .coerceAtLeast(dp(32))
-            iconLp.gravity = android.view.Gravity.CENTER
-            iconLp.bottomMargin = dp(10)
-            iconLp.topMargin = 0
-            iconLp.marginStart = 0
-            iconLp.marginEnd = 0
-            labelLp.gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START
-            labelLp.setMargins(dp(8), 0, dp(8), dp(8))
-            h.label.setPadding(0, 0, 0, 0)
-            h.label.textSize = if (t.size == Tile.SMALL) 11f else 13f
-            sizeIcon(h.icon, iconPx)
-        }
+        val iconPx = (faceH * if (t.size == Tile.SMALL || t.size == Tile.HALF) 0.52f else 0.46f)
+            .toInt()
+            .coerceAtLeast(dp(32))
+        iconLp.gravity = android.view.Gravity.CENTER
+        iconLp.bottomMargin = dp(10)
+        iconLp.topMargin = 0
+        iconLp.marginStart = 0
+        iconLp.marginEnd = 0
+        labelLp.gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START
+        labelLp.setMargins(dp(8), 0, dp(8), dp(8))
+        h.label.setPadding(0, 0, 0, 0)
+        h.label.textSize = if (t.size == Tile.SMALL || t.size == Tile.HALF) 11f else 13f
+        sizeIcon(h.icon, iconPx)
         h.icon.layoutParams = iconLp
         h.label.layoutParams = labelLp
         try {

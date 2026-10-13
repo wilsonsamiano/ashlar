@@ -32,6 +32,7 @@ class Prefs(private val appCtx: Context) {
         }
         val pm = appCtx.packageManager
         val out = mutableListOf<Tile>()
+        var retiredHalf = false
         try {
             val arr = JSONArray(raw)
             for (i in 0 until arr.length()) {
@@ -40,7 +41,12 @@ class Prefs(private val appCtx: Context) {
                 val cls = o.getString("cls")
                 try {
                     pm.getActivityInfo(android.content.ComponentName(pkg, cls), 0)
-                    out.add(Tile(pkg, cls, o.getString("label"), o.optInt("size", Tile.MEDIUM)))
+                    var size = o.optInt("size", Tile.MEDIUM)
+                    if (size == Tile.HALF) {
+                        size = Tile.SMALL
+                        retiredHalf = true
+                    }
+                    out.add(Tile(pkg, cls, o.getString("label"), size))
                 } catch (e: PackageManager.NameNotFoundException) {
                     // app uninstalled -> drop the tile
                 }
@@ -48,6 +54,7 @@ class Prefs(private val appCtx: Context) {
         } catch (e: Exception) {
             return defaultTiles()
         }
+        if (retiredHalf) saveTiles(out)
         return out
     }
 
