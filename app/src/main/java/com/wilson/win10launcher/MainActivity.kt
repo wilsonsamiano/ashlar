@@ -283,15 +283,17 @@ class MainActivity : AppCompatActivity() {
         override fun onSelectedChanged(viewHolder: RecyclerView.ViewHolder?, actionState: Int) {
             super.onSelectedChanged(viewHolder, actionState)
             if (actionState == ItemTouchHelper.ACTION_STATE_DRAG && viewHolder != null) {
-                viewHolder.itemView.animate().scaleX(1.05f).scaleY(1.05f).setDuration(100).start()
-                viewHolder.itemView.elevation = dp(12).toFloat()
+                val face = viewHolder.itemView.findViewById<View>(R.id.tileFace) ?: viewHolder.itemView
+                face.animate().scaleX(1.05f).scaleY(1.05f).setDuration(100).start()
+                face.elevation = dp(12).toFloat()
             }
         }
 
         override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
             super.clearView(recyclerView, viewHolder)
-            viewHolder.itemView.animate().scaleX(1f).scaleY(1f).setDuration(100).start()
-            viewHolder.itemView.elevation = if (adapter.editMode) dp(2).toFloat() else 0f
+            val face = viewHolder.itemView.findViewById<View>(R.id.tileFace) ?: viewHolder.itemView
+            face.animate().scaleX(1f).scaleY(1f).setDuration(100).start()
+            face.elevation = if (adapter.editMode) dp(2).toFloat() else 0f
             prefs.saveTiles(adapter.tiles())
         }
     }

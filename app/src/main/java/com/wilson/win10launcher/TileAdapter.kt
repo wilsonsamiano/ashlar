@@ -96,6 +96,7 @@ class TileAdapter(
 
     class VH(v: View) : RecyclerView.ViewHolder(v) {
         val root: FrameLayout = v as FrameLayout
+        val face: FrameLayout = v.findViewById(R.id.tileFace)
         val icon: ImageView = v.findViewById(R.id.tileIcon)
         val label: TextView = v.findViewById(R.id.tileLabel)
     }
@@ -105,7 +106,7 @@ class TileAdapter(
         val vh = VH(v)
         // Windows 10 Mobile 3D tilt. Skipped while rearranging.
         // Returning false lets click, long-click, and drag still fire.
-        vh.root.setOnTouchListener { view, e ->
+        vh.face.setOnTouchListener { view, e ->
             if (!editMode) {
                 when (e.actionMasked) {
                     MotionEvent.ACTION_DOWN -> tilt(view, e.x, e.y)
@@ -139,22 +140,35 @@ class TileAdapter(
     override fun onBindViewHolder(h: VH, position: Int) {
         val t = items[position]
         h.root.animate().cancel()
-        h.root.rotationX = 0f
-        h.root.rotationY = 0f
-        h.root.scaleX = 1f
-        h.root.scaleY = 1f
-        h.root.elevation = if (editMode) dp(2).toFloat() else 0f
+        h.face.animate().cancel()
+        h.face.rotationX = 0f
+        h.face.rotationY = 0f
+        h.face.scaleX = 1f
+        h.face.scaleY = 1f
+        h.face.elevation = if (editMode) dp(2).toFloat() else 0f
         val gap = dp(2)
         val unit = cellSize(h.root)
         val lp = h.root.layoutParams as RecyclerView.LayoutParams
         lp.setMargins(gap, gap, gap, gap)
 
+        val rows = if (t == null) Tile.rows(Tile.SMALL) else Tile.rows(t.size)
+        val faceH = (unit * rows - gap * 2).coerceAtLeast(if (t?.size == Tile.HALF) dp(36) else dp(36))
+        // Root height is what the grid measures first. The grid then stretches every
+        // tile in the row to the tallest one, which turned quarter tiles into tall slices.
+        // The face keeps the real height and stays at the top of that cell.
+        lp.width = ViewGroup.LayoutParams.MATCH_PARENT
+        lp.height = faceH
+        h.root.layoutParams = lp
+        h.root.background = null
+        h.root.isClickable = false
+        val faceLp = h.face.layoutParams as FrameLayout.LayoutParams
+        faceLp.width = ViewGroup.LayoutParams.MATCH_PARENT
+        faceLp.height = faceH
+        faceLp.gravity = android.view.Gravity.TOP
+        h.face.layoutParams = faceLp
+
         if (t == null) {
-            val s = Tile.rows(Tile.SMALL)
-            lp.width = ViewGroup.LayoutParams.MATCH_PARENT
-            lp.height = (unit * s - gap * 2).coerceAtLeast(dp(36))
-            h.root.layoutParams = lp
-            h.root.background = ColorDrawable(darken(accent, 0.75f))
+            h.face.background = ColorDrawable(darken(accent, 0.75f))
             sizeIcon(h.icon, dp(28))
             (h.icon.layoutParams as FrameLayout.LayoutParams).apply {
                 gravity = android.view.Gravity.CENTER
@@ -164,16 +178,11 @@ class TileAdapter(
             h.icon.imageTintList = ColorStateList.valueOf(Color.WHITE)
             h.label.text = ""
             h.label.visibility = View.GONE
-            h.root.setOnClickListener { onAction(Action.Add) }
-            h.root.setOnLongClickListener(null)
+            h.face.setOnClickListener { onAction(Action.Add) }
+            h.face.setOnLongClickListener(null)
             return
         }
-
-        val rows = Tile.rows(t.size)
-        lp.width = ViewGroup.LayoutParams.MATCH_PARENT
-        lp.height = (unit * rows - gap * 2).coerceAtLeast(if (t.size == Tile.HALF) dp(32) else dp(36))
-        h.root.layoutParams = lp
-        h.root.background = rippleBg(accent)
+        h.face.background = rippleBg(accent)
         h.icon.imageTintList = null
         val iconPx = when (t.size) {
             Tile.HALF -> dp(18)
@@ -184,7 +193,7 @@ class TileAdapter(
         val iconLp = h.icon.layoutParams as FrameLayout.LayoutParams
         val labelLp = h.label.layoutParams as FrameLayout.LayoutParams
         if (t.size == Tile.HALF) {
-            val iconSide = dp(18).coerceAtMost((lp.height * 0.7f).toInt().coerceAtLeast(dp(12)))
+            val iconSide = dp(18).coerceAtMost((faceH * 0.7f).toInt().coerceAtLeast(dp(12)))
             iconLp.gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
             iconLp.setMargins(dp(8), 0, 0, 0)
             labelLp.gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
@@ -213,15 +222,15 @@ class TileAdapter(
         }
         h.label.visibility = View.VISIBLE
         h.label.text = t.label
-        h.root.setOnClickListener {
-            if (editMode) onAction(Action.Options(t, h.root))
-            else onAction(Action.Launch(t, h.root))
+        h.face.setOnClickListener {
+            if (editMode) onAction(Action.Options(t, h.face))
+            else onAction(Action.Launch(t, h.face))
         }
-        h.root.setOnLongClickListener {
+        h.face.setOnLongClickListener {
             if (editMode) {
                 false
             } else {
-                onAction(Action.Options(t, h.root))
+                onAction(Action.Options(t, h.face))
                 true
             }
         }
