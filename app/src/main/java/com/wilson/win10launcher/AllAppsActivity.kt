@@ -1,7 +1,9 @@
 package com.wilson.win10launcher
 
-import android.content.res.ColorStateList
 import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.content.res.ColorStateList
+import android.net.Uri
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -12,6 +14,7 @@ import android.widget.ArrayAdapter
 import android.widget.EditText
 import android.widget.GridView
 import android.widget.ImageView
+import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -21,7 +24,7 @@ import androidx.recyclerview.widget.RecyclerView
 
 /**
  * Alphabetical app list with letter headers. Tap a header letter to jump.
- * Tap an app to launch; long-press to pin it to Start.
+ * Tap an app to launch; long-press to pin or uninstall.
  * Launched with extra "pick"=true from the "+" tile: tapping pins and closes.
  */
 class AllAppsActivity : AppCompatActivity() {
@@ -57,15 +60,8 @@ class AllAppsActivity : AppCompatActivity() {
             .sortedWith(compareBy({ it.label.lowercase() }, { it.pkg }))
         adapter = AppsAdapter(
             onHeaderClick = { showLetterPicker() },
-            onAppClick = { app ->
-                prefs.addTile(Tile(app.pkg, app.cls, app.label, Tile.MEDIUM))
-                Toast.makeText(this, "Pinned ${app.label}", Toast.LENGTH_SHORT).show()
-                if (pickMode) finish()
-            },
-            onAppLongClick = { app ->
-                prefs.addTile(Tile(app.pkg, app.cls, app.label, Tile.MEDIUM))
-                Toast.makeText(this, "Pinned ${app.label}", Toast.LENGTH_SHORT).show()
-            }
+            onAppClick = { app -> pinApp(app) },
+            onAppLongClick = { app, anchor -> showAppMenu(app, anchor) }
         )
         // In pick mode a plain tap pins; otherwise tap launches.
         adapter.tapLaunches = !pickMode
@@ -132,7 +128,7 @@ class AllAppsActivity : AppCompatActivity() {
     inner class AppsAdapter(
         private val onHeaderClick: () -> Unit,
         private val onAppClick: (AppList.App) -> Unit,
-        private val onAppLongClick: (AppList.App) -> Unit
+        private val onAppLongClick: (AppList.App, View) -> Unit
     ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
         var tapLaunches = true
@@ -191,7 +187,7 @@ class AllAppsActivity : AppCompatActivity() {
                     vh.itemView.setOnClickListener {
                         if (tapLaunches) launchApp(r.app, vh.itemView) else onAppClick(r.app)
                     }
-                    vh.itemView.setOnLongClickListener { onAppLongClick(r.app); true }
+                    vh.itemView.setOnLongClickListener { onAppLongClick(r.app, vh.itemView); true }
                 }
             }
         }
@@ -208,6 +204,66 @@ class AllAppsActivity : AppCompatActivity() {
     }
 
     private var turnedAway = false
+    private var reloadOnResume = false
+
+    private fun pinApp(app: AppList.App) {
+        prefs.addTile(Tile(app.pkg, app.cls, app.label, Tile.MEDIUM))
+        Toast.makeText(this, "Pinned ${app.label}", Toast.LENGTH_SHORT).show()
+        if (pickMode) finish()
+    }
+
+    /** "Uninstall", "Uninstall updates", or null when Android will not allow it. */
+    private fun uninstallLabel(app: AppList.App): String? {
+        if (Tile.isClock(app.pkg, app.cls)) return null
+        return try {
+            val info = packageManager.getApplicationInfo(app.pkg, 0)
+            val system = info.flags and ApplicationInfo.FLAG_SYSTEM != 0
+            val updated = info.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP != 0
+            when {
+                system && updated -> "Uninstall updates"
+                system -> null
+                else -> "Uninstall"
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun showAppMenu(app: AppList.App, anchor: View) {
+        val menu = PopupMenu(this, anchor)
+        menu.menu.add("Pin to Start")
+        val uninstall = uninstallLabel(app)
+        if (uninstall != null) menu.menu.add(uninstall)
+        menu.setOnMenuItemClickListener { item ->
+            when (item.title.toString()) {
+                "Pin to Start" -> pinApp(app)
+                "Uninstall", "Uninstall updates" -> requestUninstall(app)
+            }
+            true
+        }
+        menu.show()
+    }
+
+    private fun requestUninstall(app: AppList.App) {
+        val i = Intent(Intent.ACTION_DELETE).apply {
+            data = Uri.parse("package:${app.pkg}")
+        }
+        try {
+            reloadOnResume = true
+            startActivity(i)
+        } catch (e: Exception) {
+            reloadOnResume = false
+            Toast.makeText(this, "Can't uninstall ${app.label}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun reloadApps() {
+        all = (AppList.load(packageManager) + AppList.App(Tile.CLOCK_PKG, Tile.CLOCK_CLS, "Clock"))
+            .sortedWith(compareBy({ it.label.lowercase() }, { it.pkg }))
+        val q = findViewById<EditText>(R.id.searchBox).text?.toString()?.trim()?.lowercase().orEmpty()
+        val filtered = if (q.isEmpty()) all else all.filter { it.label.lowercase().contains(q) }
+        adapter.submit(buildSections(filtered))
+    }
 
     private fun launchApp(app: AppList.App, view: View) {
         if (turnedAway) return
@@ -236,6 +292,10 @@ class AllAppsActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (reloadOnResume) {
+            reloadOnResume = false
+            reloadApps()
+        }
         if (!turnedAway) return
         turnedAway = false
         PageTurn.returnTurn(findViewById(android.R.id.content))
