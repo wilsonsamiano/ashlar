@@ -4,12 +4,16 @@
         <item name="android:windowBackground">@color/wp_black</item>
         <item name="android:statusBarColor">@color/wp_black</item>
         <item name="android:navigationBarColor">@color/wp_black</item>
+        <item name="android:windowAnimationStyle">@style/Anim.Instant</item>
+        <item name="android:windowDisablePreview">true</item>
     </style>
 
     <style name="Theme.Win10.Light" parent="Theme.Material3.Light.NoActionBar">
         <item name="android:windowBackground">@color/wp_white</item>
         <item name="android:statusBarColor">@color/wp_white</item>
         <item name="android:navigationBarColor">@color/wp_white</item>
+        <item name="android:windowAnimationStyle">@style/Anim.Instant</item>
+        <item name="android:windowDisablePreview">true</item>
     </style>
 
     <style name="Anim.Instant" parent="@android:style/Animation">
