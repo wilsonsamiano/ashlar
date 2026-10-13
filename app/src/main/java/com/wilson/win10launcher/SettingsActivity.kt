@@ -38,7 +38,7 @@ class SettingsActivity : AppCompatActivity() {
         setContentView(R.layout.activity_settings)
         val page = findViewById<View>(android.R.id.content)
         page.setBackgroundColor(prefs.bgColor())
-        if (savedInstanceState == null) PageTurn.playOpen(page)
+        if (savedInstanceState == null) PageTurn.poseClosed(page)
         title = "Launcher settings"
 
         findViewById<View>(R.id.root).setBackgroundColor(prefs.bgColor())
@@ -145,6 +145,15 @@ class SettingsActivity : AppCompatActivity() {
                 status.text = "Download failed. Tap to try again."
             }
         }
+    }
+
+    private var turnPlayed = false
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (!hasFocus || turnPlayed) return
+        turnPlayed = true
+        PageTurn.startOpen(findViewById(android.R.id.content))
     }
 
     private var closing = false

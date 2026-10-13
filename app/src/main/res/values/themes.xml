@@ -12,11 +12,20 @@
         <item name="android:navigationBarColor">@color/wp_white</item>
     </style>
 
+    <style name="Anim.Instant" parent="@android:style/Animation">
+        <item name="android:windowEnterAnimation">@anim/none</item>
+        <item name="android:windowExitAnimation">@anim/none</item>
+        <item name="android:activityOpenEnterAnimation">@anim/none</item>
+        <item name="android:activityOpenExitAnimation">@anim/none</item>
+        <item name="android:activityCloseEnterAnimation">@anim/none</item>
+        <item name="android:activityCloseExitAnimation">@anim/none</item>
+    </style>
+
     <!-- Transparent window so the page can swing open over Start. -->
     <style name="Theme.Win10.Dark.Page" parent="Theme.Win10.Dark">
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
-        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:windowAnimationStyle">@style/Anim.Instant</item>
         <item name="android:windowDisablePreview">true</item>
         <item name="android:colorBackgroundCacheHint">@null</item>
     </style>
@@ -24,7 +33,7 @@
     <style name="Theme.Win10.Light.Page" parent="Theme.Win10.Light">
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
-        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:windowAnimationStyle">@style/Anim.Instant</item>
         <item name="android:navigationBarColor">@color/wp_white</item>
         <item name="android:statusBarColor">@color/wp_white</item>
         <item name="android:windowDisablePreview">true</item>

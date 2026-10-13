@@ -8,9 +8,9 @@ import android.view.animation.AccelerateInterpolator
 import android.view.animation.DecelerateInterpolator
 
 /**
- * Windows Phone 7 turnstile, done on the view itself.
- * Activity XML animations were dropped by the system, so the page never moved.
- * The screen hinges on the left edge and swings like a book page.
+ * Book-page turn. The pose is applied before the first draw, and the swing
+ * starts only once the window is on screen. scaleX from the left spine is
+ * included so the turn still shows on tablets where 3D rotation is ignored.
  */
 object PageTurn {
 
@@ -23,44 +23,60 @@ object PageTurn {
         activity.overridePendingTransition(0, 0)
     }
 
-    fun playOpen(page: View) {
-        page.visibility = View.INVISIBLE
-        page.post {
-            hinge(page)
-            page.rotationY = 86f
-            page.alpha = 0.35f
-            page.visibility = View.VISIBLE
-            page.animate()
-                .rotationY(0f)
-                .alpha(1f)
-                .setDuration(560)
-                .setInterpolator(DecelerateInterpolator(1.8f))
-                .withEndAction { page.setLayerType(View.LAYER_TYPE_NONE, null) }
-                .start()
-        }
+    /** Closed book: a sliver on the left edge. Call before the first draw. */
+    fun poseClosed(page: View) {
+        hinge(page)
+        page.scaleX = 0.06f
+        page.rotationY = 72f
+        page.alpha = 0.55f
     }
 
-    fun playClose(page: View, then: () -> Unit) {
-        page.animate().cancel()
+    /** Swing the page flat. Call from onWindowFocusChanged so it is visible. */
+    fun startOpen(page: View) {
         hinge(page)
+        page.animate().cancel()
         page.animate()
-            .rotationY(86f)
-            .alpha(0.2f)
-            .setDuration(420)
-            .setInterpolator(AccelerateInterpolator(1.4f))
-            .withEndAction {
-                page.setLayerType(View.LAYER_TYPE_NONE, null)
-                then()
-            }
+            .scaleX(1f)
+            .rotationY(0f)
+            .alpha(1f)
+            .setDuration(680)
+            .setInterpolator(DecelerateInterpolator(1.6f))
             .start()
     }
 
+    fun playClose(page: View, then: () -> Unit) {
+        var done = false
+        fun once() {
+            if (done) return
+            done = true
+            then()
+        }
+        hinge(page)
+        page.animate().cancel()
+        page.animate()
+            .scaleX(0.06f)
+            .rotationY(72f)
+            .alpha(0.4f)
+            .setDuration(420)
+            .setInterpolator(AccelerateInterpolator(1.3f))
+            .withEndAction { once() }
+            .start()
+        page.postDelayed({ once() }, 700)
+    }
+
     private fun hinge(page: View) {
-        (page.parent as? ViewGroup)?.clipChildren = false
-        if (page is ViewGroup) page.clipChildren = false
+        var parent = page.parent
+        while (parent is ViewGroup) {
+            parent.clipChildren = false
+            parent.clipToPadding = false
+            parent = parent.parent
+        }
+        if (page is ViewGroup) {
+            page.clipChildren = false
+            page.clipToPadding = false
+        }
         page.pivotX = 0f
-        page.pivotY = page.height / 2f
-        page.cameraDistance = page.resources.displayMetrics.density * 4200f
-        page.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        page.pivotY = if (page.height > 0) page.height / 2f else page.resources.displayMetrics.heightPixels / 2f
+        page.cameraDistance = page.resources.displayMetrics.density * 2400f
     }
 }

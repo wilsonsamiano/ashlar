@@ -45,7 +45,7 @@ class AllAppsActivity : AppCompatActivity() {
         setContentView(R.layout.activity_all_apps)
         val page = findViewById<View>(android.R.id.content)
         page.setBackgroundColor(prefs.bgColor())
-        if (savedInstanceState == null) PageTurn.playOpen(page)
+        if (savedInstanceState == null) PageTurn.poseClosed(page)
         pickMode = intent.getBooleanExtra("pick", false)
         val titleBar = findViewById<TextView>(R.id.titleBar)
         titleBar.text = if (pickMode) "Tap an app to pin it" else "All apps"
@@ -210,6 +210,15 @@ class AllAppsActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Toast.makeText(this, "Can't open ${app.label}", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private var turnPlayed = false
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (!hasFocus || turnPlayed) return
+        turnPlayed = true
+        PageTurn.startOpen(findViewById(android.R.id.content))
     }
 
     private var closing = false
