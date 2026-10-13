@@ -2,6 +2,7 @@ package com.wilson.win10launcher
 
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
@@ -14,17 +15,62 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
+import android.text.format.DateFormat
 import androidx.recyclerview.widget.RecyclerView
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 data class Tile(val pkg: String, val cls: String, val label: String, var size: Int) {
+    fun isClock() = Tile.isClock(pkg, cls)
     companion object {
         const val SMALL = 0
         const val MEDIUM = 1
         const val WIDE = 2
         /** Same width as a small tile, half the height. */
         const val HALF = 3
-        /** 12 columns so a half tile is one cell and a small tile stays 2x2. */
+        /** Built-in live clock. Not a real package. */
+        const val CLOCK_PKG = "com.wilson.win10launcher"
+        const val CLOCK_CLS = "clock"
+        /** 12 columns so a small tile is 2x2 and a medium tile is 4x4. */
         const val GRID = 12
+
+        fun clock(size: Int = MEDIUM) = Tile(CLOCK_PKG, CLOCK_CLS, "Clock", size)
+
+        fun isClock(pkg: String, cls: String) = pkg == CLOCK_PKG && cls == CLOCK_CLS
+
+        /** Opens the tablet's clock. Falls back to a desk clock package. */
+        fun clockIntent(ctx: Context): Intent {
+            val flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+            val alarm = Intent(android.provider.AlarmClock.ACTION_SHOW_ALARMS).addFlags(flags)
+            if (alarm.resolveActivity(ctx.packageManager) != null) return alarm
+            for (pkg in listOf(
+                "com.google.android.deskclock",
+                "com.android.deskclock",
+                "com.sec.android.app.clockpackage"
+            )) {
+                ctx.packageManager.getLaunchIntentForPackage(pkg)?.let { return it.addFlags(flags) }
+            }
+            return alarm
+        }
+
+        fun timeText(ctx: Context): String {
+            val now = java.util.Calendar.getInstance()
+            val minute = now.get(java.util.Calendar.MINUTE)
+            if (DateFormat.is24HourFormat(ctx)) {
+                return String.format(Locale.getDefault(), "%02d:%02d", now.get(java.util.Calendar.HOUR_OF_DAY), minute)
+            }
+            var hour = now.get(java.util.Calendar.HOUR)
+            if (hour == 0) hour = 12
+            return String.format(Locale.getDefault(), "%d:%02d", hour, minute)
+        }
+
+        fun dateText(ctx: Context): String {
+            val day = SimpleDateFormat("EEE d", Locale.getDefault()).format(Date())
+            if (DateFormat.is24HourFormat(ctx)) return day
+            val ap = SimpleDateFormat("a", Locale.getDefault()).format(Date())
+            return "$ap  ·  $day"
+        }
 
         fun span(size: Int, totalCols: Int = GRID) = when (size) {
             WIDE -> totalCols
@@ -101,10 +147,25 @@ class TileAdapter(
         return Tile.rows(t.size)
     }
 
+    /** Update the time on visible clock tiles without rebinding the whole grid. */
+    fun paintClocks(grid: RecyclerView) {
+        if (featherHold) return
+        for (n in 0 until grid.childCount) {
+            val child = grid.getChildAt(n)
+            val pos = grid.getChildAdapterPosition(child)
+            val tile = items.getOrNull(pos) ?: continue
+            if (!tile.isClock()) continue
+            child.findViewById<TextView>(R.id.tileTime)?.text = Tile.timeText(ctx)
+            val date = child.findViewById<TextView>(R.id.tileLabel)
+            if (date?.visibility == View.VISIBLE) date.text = Tile.dateText(ctx)
+        }
+    }
+
     class VH(v: View) : RecyclerView.ViewHolder(v) {
         val root: FrameLayout = v as FrameLayout
         val face: FrameLayout = v.findViewById(R.id.tileFace)
         val icon: ImageView = v.findViewById(R.id.tileIcon)
+        val time: TextView = v.findViewById(R.id.tileTime)
         val label: TextView = v.findViewById(R.id.tileLabel)
     }
 
@@ -188,6 +249,8 @@ class TileAdapter(
             }
             h.icon.setImageResource(android.R.drawable.ic_input_add)
             h.icon.imageTintList = ColorStateList.valueOf(Color.WHITE)
+            h.icon.visibility = View.VISIBLE
+            h.time.visibility = View.GONE
             h.label.text = ""
             h.label.visibility = View.GONE
             h.face.setOnClickListener { onAction(Action.Add) }
@@ -198,6 +261,42 @@ class TileAdapter(
         h.icon.imageTintList = null
         val iconLp = h.icon.layoutParams as FrameLayout.LayoutParams
         val labelLp = h.label.layoutParams as FrameLayout.LayoutParams
+        if (t.isClock()) {
+            h.icon.visibility = View.GONE
+            h.time.visibility = View.VISIBLE
+            h.time.text = Tile.timeText(ctx)
+            val small = t.size == Tile.SMALL || t.size == Tile.HALF
+            h.time.setTextSize(TypedValue.COMPLEX_UNIT_PX, faceH * if (small) 0.34f else 0.30f)
+            val timeLp = h.time.layoutParams as FrameLayout.LayoutParams
+            timeLp.gravity = android.view.Gravity.CENTER
+            timeLp.bottomMargin = if (small) 0 else dp(18)
+            h.time.layoutParams = timeLp
+            labelLp.gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START
+            labelLp.setMargins(dp(10), 0, dp(8), dp(8))
+            h.label.layoutParams = labelLp
+            h.label.setPadding(0, 0, 0, 0)
+            h.label.textSize = if (small) 11f else 14f
+            if (small) {
+                h.label.visibility = View.GONE
+            } else {
+                h.label.visibility = View.VISIBLE
+                h.label.text = Tile.dateText(ctx)
+            }
+            h.face.setOnClickListener {
+                if (editMode) onAction(Action.Options(t, h.face))
+                else onAction(Action.Launch(t, h.face))
+            }
+            h.face.setOnLongClickListener {
+                if (editMode) false
+                else {
+                    onAction(Action.Options(t, h.face))
+                    true
+                }
+            }
+            return
+        }
+        h.icon.visibility = View.VISIBLE
+        h.time.visibility = View.GONE
         val iconPx = (faceH * if (t.size == Tile.SMALL || t.size == Tile.HALF) 0.52f else 0.46f)
             .toInt()
             .coerceAtLeast(dp(32))

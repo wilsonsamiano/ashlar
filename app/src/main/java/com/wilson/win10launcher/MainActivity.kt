@@ -1,7 +1,11 @@
 package com.wilson.win10launcher
 
+import android.content.BroadcastReceiver
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.os.Build
 import android.os.Bundle
 import android.view.MotionEvent
 import android.view.View
@@ -27,6 +31,30 @@ class MainActivity : AppCompatActivity() {
     private var featherX = 0f
     private var featherY = 0f
     private var featherToken = 0
+    private val timeTick = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (::adapter.isInitialized && ::grid.isInitialized) adapter.paintClocks(grid)
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        val filter = IntentFilter(Intent.ACTION_TIME_TICK).apply {
+            addAction(Intent.ACTION_TIME_CHANGED)
+            addAction(Intent.ACTION_TIMEZONE_CHANGED)
+        }
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(timeTick, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("UnspecifiedRegisterReceiverFlag")
+            registerReceiver(timeTick, filter)
+        }
+    }
+
+    override fun onStop() {
+        unregisterReceiver(timeTick)
+        super.onStop()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         prefs = Prefs(this)
@@ -206,10 +234,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun launchTile(t: Tile, view: View) {
         if (leave != Leave.NONE) return
-        val i = Intent(Intent.ACTION_MAIN).apply {
-            component = ComponentName(t.pkg, t.cls)
-            addCategory(Intent.CATEGORY_LAUNCHER)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+        val i = if (t.isClock()) {
+            Tile.clockIntent(this)
+        } else {
+            Intent(Intent.ACTION_MAIN).apply {
+                component = ComponentName(t.pkg, t.cls)
+                addCategory(Intent.CATEGORY_LAUNCHER)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+            }
         }
         val loc = IntArray(2)
         view.getLocationOnScreen(loc)

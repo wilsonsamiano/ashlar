@@ -1,6 +1,6 @@
 package com.wilson.win10launcher
 
-import android.content.ComponentName
+import android.content.res.ColorStateList
 import android.content.Intent
 import android.os.Bundle
 import android.text.Editable
@@ -53,7 +53,8 @@ class AllAppsActivity : AppCompatActivity() {
         titleBar.text = if (pickMode) "Tap an app to pin it" else "All apps"
         titleBar.setTextColor(prefs.fgColor())
 
-        all = AppList.load(packageManager)
+        all = (AppList.load(packageManager) + AppList.App(Tile.CLOCK_PKG, Tile.CLOCK_CLS, "Clock"))
+            .sortedWith(compareBy({ it.label.lowercase() }, { it.pkg }))
         adapter = AppsAdapter(
             onHeaderClick = { showLetterPicker() },
             onAppClick = { app ->
@@ -172,12 +173,20 @@ class AllAppsActivity : AppCompatActivity() {
                     val vh = h as AppVH
                     vh.label.text = r.app.label
                     vh.label.setTextColor(prefs.fgColor())
-                    try {
-                        vh.icon.setImageDrawable(
-                            packageManager.getActivityIcon(ComponentName(r.app.pkg, r.app.cls))
-                        )
-                    } catch (e: Exception) {
-                        vh.icon.setImageDrawable(null)
+                    if (Tile.isClock(r.app.pkg, r.app.cls)) {
+                        vh.icon.setImageResource(android.R.drawable.ic_lock_idle_alarm)
+                        vh.icon.imageTintList = ColorStateList.valueOf(prefs.fgColor())
+                    } else {
+                        vh.icon.imageTintList = null
+                        try {
+                            vh.icon.setImageDrawable(
+                                packageManager.getActivityIcon(
+                                    android.content.ComponentName(r.app.pkg, r.app.cls)
+                                )
+                            )
+                        } catch (e: Exception) {
+                            vh.icon.setImageDrawable(null)
+                        }
                     }
                     vh.itemView.setOnClickListener {
                         if (tapLaunches) launchApp(r.app, vh.itemView) else onAppClick(r.app)
@@ -202,10 +211,14 @@ class AllAppsActivity : AppCompatActivity() {
 
     private fun launchApp(app: AppList.App, view: View) {
         if (turnedAway) return
-        val i = Intent(Intent.ACTION_MAIN).apply {
-            component = ComponentName(app.pkg, app.cls)
-            addCategory(Intent.CATEGORY_LAUNCHER)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+        val i = if (Tile.isClock(app.pkg, app.cls)) {
+            Tile.clockIntent(this)
+        } else {
+            Intent(Intent.ACTION_MAIN).apply {
+                component = android.content.ComponentName(app.pkg, app.cls)
+                addCategory(Intent.CATEGORY_LAUNCHER)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+            }
         }
         turnedAway = true
         val page = findViewById<View>(android.R.id.content)

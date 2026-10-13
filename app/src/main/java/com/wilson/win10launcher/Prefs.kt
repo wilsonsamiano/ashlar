@@ -28,6 +28,7 @@ class Prefs(private val appCtx: Context) {
         if (raw == null) {
             val d = defaultTiles()
             saveTiles(d)
+            sp.edit().putBoolean("clockSeeded", true).apply()
             return d
         }
         val pm = appCtx.packageManager
@@ -40,12 +41,16 @@ class Prefs(private val appCtx: Context) {
                 val pkg = o.getString("pkg")
                 val cls = o.getString("cls")
                 try {
-                    pm.getActivityInfo(android.content.ComponentName(pkg, cls), 0)
                     var size = o.optInt("size", Tile.MEDIUM)
                     if (size == Tile.HALF) {
                         size = Tile.SMALL
                         retiredHalf = true
                     }
+                    if (Tile.isClock(pkg, cls)) {
+                        out.add(Tile(pkg, cls, "Clock", size))
+                        continue
+                    }
+                    pm.getActivityInfo(android.content.ComponentName(pkg, cls), 0)
                     out.add(Tile(pkg, cls, o.getString("label"), size))
                 } catch (e: PackageManager.NameNotFoundException) {
                     // app uninstalled -> drop the tile
@@ -55,6 +60,11 @@ class Prefs(private val appCtx: Context) {
             return defaultTiles()
         }
         if (retiredHalf) saveTiles(out)
+        if (!sp.getBoolean("clockSeeded", false)) {
+            if (out.none { it.isClock() }) out.add(Tile.clock())
+            saveTiles(out)
+            sp.edit().putBoolean("clockSeeded", true).apply()
+        }
         return out
     }
 
@@ -99,7 +109,7 @@ class Prefs(private val appCtx: Context) {
             "com.google.android.apps.photos" to Tile.MEDIUM,
             "com.google.android.calendar" to Tile.MEDIUM
         )
-        val out = mutableListOf<Tile>()
+        val out = mutableListOf(Tile.clock())
         for ((pkg, size) in wanted) {
             val (cls, label) = labelOf(pkg) ?: continue
             out.add(Tile(pkg, cls, label, size))
