@@ -11,6 +11,7 @@ import android.os.Handler
 import android.os.Looper
 import androidx.core.content.ContextCompat
 import java.util.Calendar
+import java.util.TimeZone
 import kotlin.math.acos
 import kotlin.math.asin
 import kotlin.math.cos
@@ -24,14 +25,14 @@ import kotlin.math.sin
 object Daylight {
 
     fun isDay(ctx: Context, now: Long = System.currentTimeMillis()): Boolean {
-        val place = place(ctx) ?: return false
+        val place = place(ctx, now)
         val (rise, set) = sunTimes(place.first, place.second, now)
         return now in rise..set
     }
 
-    /** "6:42 PM" style label for the next change, or null without a location. */
-    fun nextChange(ctx: Context, now: Long = System.currentTimeMillis()): Long? {
-        val place = place(ctx) ?: return null
+    /** Next sunrise or sunset. Uses the time zone if the tablet has no location yet. */
+    fun nextChange(ctx: Context, now: Long = System.currentTimeMillis()): Long {
+        val place = place(ctx, now)
         val (rise, set) = sunTimes(place.first, place.second, now)
         return when {
             now < rise -> rise
@@ -40,7 +41,10 @@ object Daylight {
         }
     }
 
-    fun hasPlace(ctx: Context) = place(ctx) != null
+    fun hasPlace(ctx: Context): Boolean {
+        val sp = ctx.getSharedPreferences("win10", Context.MODE_PRIVATE)
+        return sp.contains("sunLat") && sp.contains("sunLon")
+    }
 
     fun refresh(ctx: Context, then: () -> Unit) {
         if (!allowed(ctx)) {
@@ -101,10 +105,17 @@ object Daylight {
             PackageManager.PERMISSION_GRANTED
     }
 
-    private fun place(ctx: Context): Pair<Double, Double>? {
+    private fun place(ctx: Context, now: Long): Pair<Double, Double> {
         val sp = ctx.getSharedPreferences("win10", Context.MODE_PRIVATE)
-        if (!sp.contains("sunLat") || !sp.contains("sunLon")) return null
-        return sp.getFloat("sunLat", 0f).toDouble() to sp.getFloat("sunLon", 0f).toDouble()
+        if (sp.contains("sunLat") && sp.contains("sunLon")) {
+            val lat = sp.getFloat("sunLat", 0f).toDouble()
+            val lon = sp.getFloat("sunLon", 0f).toDouble()
+            if (lat != 0.0 || lon != 0.0) return lat to lon
+        }
+        // No fix yet. The time zone's meridian still puts daytime in the light
+        // and nighttime in the dark. A real location replaces this later.
+        val offsetHours = TimeZone.getDefault().getOffset(now) / 3_600_000.0
+        return 31.8 to offsetHours * 15.0
     }
 
     private fun store(ctx: Context, loc: Location) {

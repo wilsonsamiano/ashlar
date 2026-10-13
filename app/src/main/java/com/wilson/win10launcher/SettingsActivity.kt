@@ -30,7 +30,9 @@ class SettingsActivity : AppCompatActivity() {
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (!granted) {
-            Toast.makeText(this, "Location is needed for sunrise and sunset", Toast.LENGTH_LONG).show()
+            prefs.themeMode = "sun"
+            Toast.makeText(this, "Using the time zone for sunrise and sunset", Toast.LENGTH_LONG).show()
+            recreate()
             return@registerForActivityResult
         }
         prefs.themeMode = "sun"
@@ -125,13 +127,8 @@ class SettingsActivity : AppCompatActivity() {
         return when (prefs.themeMode) {
             "light" -> "Always light"
             "sun" -> {
-                val whenNext = Daylight.nextChange(this)
-                if (whenNext == null) {
-                    "Needs location for sunrise and sunset"
-                } else {
-                    val clock = DateFormat.getTimeFormat(this).format(whenNext)
-                    if (prefs.darkTheme) "Dark until sunrise, $clock" else "Light until sunset, $clock"
-                }
+                val clock = DateFormat.getTimeFormat(this).format(Daylight.nextChange(this))
+                if (prefs.darkTheme) "Dark until sunrise, $clock" else "Light until sunset, $clock"
             }
             else -> "Always dark"
         }
