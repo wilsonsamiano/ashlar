@@ -8,7 +8,7 @@ Beta for sideload. Package `com.wilson.win10launcher`, so it will not clash with
 
 ## Download the beta
 
-**[Win10Launcher-2.3.apk](https://github.com/wilsonsamiano/win10-launcher/releases/download/v2.3.0-beta/Win10Launcher-2.3.apk)** — version 2.3 (versionCode 14)
+**[Win10Launcher-2.4.apk](https://github.com/wilsonsamiano/win10-launcher/releases/download/v2.4.0-beta/Win10Launcher-2.4.apk)** — version 2.4 (versionCode 15)
 
 1. Download the APK onto the tablet (Onn 8.1 and other Android 8+ devices).
 2. Open it and allow install from that source if Android asks.
@@ -22,7 +22,7 @@ Beta for sideload. Package `com.wilson.win10launcher`, so it will not clash with
 - Half tile is the same width as a small tile and half the height
 - Press a tile and it tilts toward your finger, then springs back
 - Swipe left on Start, or tap **ALL APPS**: the screen slides (flat, no page turn)
-- Tap a tile: it presses in, then turns on its own left edge, and the other tiles follow. No zoom
+- Tap a tile: it presses in, then the tiles turn together on the left edge of the screen. They stay separate, and the one you tapped leads. No zoom
 - Opening an app from the list, or Settings, still turns the whole page
 - Back from All apps slides the other way. Back from Settings turns the page back. Back from an app unfolds the tiles
 - Pin with the **+** tile, or long-press an app in the list

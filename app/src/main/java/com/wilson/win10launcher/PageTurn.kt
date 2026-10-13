@@ -1,9 +1,13 @@
 package com.wilson.win10launcher
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ObjectAnimator
 import android.app.Activity
 import android.content.Intent
 import android.os.Build
 import android.view.View
+import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.view.animation.Interpolator
 import androidx.recyclerview.widget.RecyclerView
@@ -22,9 +26,11 @@ import kotlin.math.hypot
  * so the angle is negative — 2.0 turned the page backwards. One hardware layer,
  * so the tile grid cannot draw a second copy.
  *
- * Tile tap (TurnstileFeatherEffect): the tapped tile scales down like a press,
- * then each tile hinges on its own left edge. The tapped one starts immediately.
- * The others follow, staggered by distance. Same angle and ease as the page.
+ * Tile tap is the same turnstile, not a separate door per tile. Every tile
+ * hinges on the left edge of the screen (and the vertical middle), so they
+ * stay one page. They are still separate views, so the gaps stay open.
+ * The tapped tile presses in, then starts the turn. The others follow a
+ * short beat behind.
  *
  * App list (arrow, or swipe left on Start): not a turnstile. The videos show
  * a flat horizontal slide of the whole screen. No rotation.
@@ -36,10 +42,14 @@ object PageTurn {
     private const val SLIDE_MS = 280L
     private const val EXPO = 6f
     private const val PUSH_MS = 90L
-    private const val FEATHER_MS = 320L
 
     /** Left hinge. Negative: Android's positive rotationY is the mirror of WP7. */
     private const val OPEN = -72f
+
+    /** Left hinge of the screen, and the vertical middle. Same point for every tile. */
+    private class Hinge(val x: Float, val y: Float, val pageW: Float)
+
+    private val spins = HashMap<View, ObjectAnimator>()
 
     fun noSystemAnim(activity: Activity) {
         if (Build.VERSION.SDK_INT >= 34) {
@@ -131,8 +141,8 @@ object PageTurn {
     }
 
     /**
-     * WP7 turnstile feather for a tile tap.
-     * Press the tapped tile in, then hinge it first. Neighbors follow by distance.
+     * Tile tap. Press the tapped tile in, then turn every tile on the screen's
+     * left edge together. The tapped one leads. The rest follow close behind.
      * [then] runs when the last tile has finished turning.
      */
     fun featherOut(grid: RecyclerView, tapped: View, then: () -> Unit) {
@@ -159,57 +169,42 @@ object PageTurn {
                     then()
                     return@withEndAction
                 }
+                val hinge = pageHinge(grid)
                 var maxDelay = 0L
                 for (face in facesOf(grid)) {
                     val origin = face === tapped
                     val delay = featherDelay(face, ox, oy, origin, leaving = true)
                     if (delay > maxDelay) maxDelay = delay
-                    hingeFace(face)
                     face.rotationX = 0f
                     face.rotationY = 0f
                     face.scaleX = 1f
                     face.scaleY = 1f
-                    face.animate()
-                        .rotationY(OPEN)
-                        .rotationX(0f)
-                        .scaleX(1f)
-                        .scaleY(1f)
-                        .setStartDelay(delay)
-                        .setDuration(FEATHER_MS)
-                        .setInterpolator(ExpoEase(EXPO, false))
-                        .start()
+                    hingeFace(face, hinge)
+                    spinY(face, OPEN, delay, OUT_MS, easeOut = false, end = null)
                 }
-                grid.postDelayed({ then() }, maxDelay + FEATHER_MS)
+                grid.postDelayed({ then() }, maxDelay + OUT_MS)
             }
             .start()
     }
 
     /**
-     * Start is coming back. Pose every visible tile folded (after the grid
-     * rebinds — that pass flattens them) then EaseOut to rest. The tapped
-     * area leads. Short stagger.
+     * Start is coming back. Pose every visible tile on that same left hinge,
+     * already folded, then unfold. The tapped area leads.
      */
     fun featherReturn(grid: RecyclerView, ox: Float, oy: Float) {
         onPreDraw(grid) {
-            val faces = facesOf(grid)
-            for (face in faces) {
-                hingeFace(face)
+            val hinge = pageHinge(grid)
+            for (face in facesOf(grid)) {
                 face.rotationX = 0f
-                face.rotationY = OPEN
+                face.rotationY = 0f
                 face.scaleX = 1f
                 face.scaleY = 1f
+                hingeFace(face, hinge)
+                face.rotationY = OPEN
                 val delay = featherDelay(face, ox, oy, origin = false, leaving = false)
-                face.animate().cancel()
-                face.animate()
-                    .rotationY(0f)
-                    .rotationX(0f)
-                    .scaleX(1f)
-                    .scaleY(1f)
-                    .setStartDelay(delay)
-                    .setDuration(IN_MS)
-                    .setInterpolator(ExpoEase(EXPO, true))
-                    .withEndAction { releaseFace(face, cancel = false) }
-                    .start()
+                spinY(face, 0f, delay, IN_MS, easeOut = true) {
+                    releaseFace(face, cancel = false)
+                }
             }
         }
     }
@@ -232,6 +227,16 @@ object PageTurn {
         page.scaleX = 1f
         page.scaleY = 1f
         page.translationX = x
+    }
+
+    private fun pageHinge(grid: RecyclerView): Hinge {
+        val page = grid.rootView.findViewById<View>(android.R.id.content) ?: grid
+        val loc = IntArray(2)
+        page.getLocationOnScreen(loc)
+        val h = if (page.height > 0) page.height else grid.height
+        val w = if (page.width > 0) page.width.toFloat()
+        else grid.resources.displayMetrics.widthPixels.toFloat()
+        return Hinge(loc[0].toFloat(), loc[1] + h / 2f, w)
     }
 
     private fun facesOf(grid: RecyclerView): List<View> {
@@ -257,27 +262,64 @@ object PageTurn {
         val cx = loc[0] + face.width / 2f
         val cy = loc[1] + face.height / 2f
         val dist = hypot((cx - ox).toDouble(), (cy - oy).toDouble()).toFloat()
-        val step = face.resources.displayMetrics.density * 72f
+        val step = face.resources.displayMetrics.density * 96f
         return if (leaving) {
-            // Nearest neighbor still starts after the tapped tile, so the lead reads.
-            (72L + (dist / step * 48f).toLong()).coerceAtMost(280L)
+            // Tight wave. A long gap makes the page fall apart into separate doors.
+            (dist / step * 32f).toLong().coerceAtMost(140L)
         } else {
-            (dist / step * 22f).toLong().coerceAtMost(160L)
+            (dist / step * 18f).toLong().coerceAtMost(90L)
         }
     }
 
-    /** Each tile is its own left hinge, same camera as the page turn. */
-    private fun hingeFace(face: View) {
+    /** Same hinge as the whole-page turn, so the tiles stay one sheet. */
+    private fun hingeFace(face: View, hinge: Hinge) {
+        var p = face.parent
+        while (p is ViewGroup) {
+            p.clipChildren = false
+            p.clipToPadding = false
+            if (p.id == android.R.id.content) break
+            p = p.parent
+        }
+        val loc = IntArray(2)
+        face.getLocationOnScreen(loc)
         face.setLayerType(View.LAYER_TYPE_HARDWARE, null)
-        val rootW = face.rootView.width
-        val pageW = if (rootW > 0) rootW.toFloat()
-        else face.resources.displayMetrics.widthPixels.toFloat()
-        face.pivotX = 0f
-        face.pivotY = face.height / 2f
-        face.cameraDistance = pageW * 4.8f
+        face.pivotX = hinge.x - loc[0]
+        face.pivotY = hinge.y - loc[1]
+        face.cameraDistance = hinge.pageW * 4.8f
+    }
+
+    private fun spinY(
+        face: View,
+        toDeg: Float,
+        delay: Long,
+        ms: Long,
+        easeOut: Boolean,
+        end: (() -> Unit)?
+    ) {
+        spins.remove(face)?.cancel()
+        face.animate().cancel()
+        val anim = ObjectAnimator.ofFloat(face, View.ROTATION_Y, face.rotationY, toDeg)
+        anim.startDelay = delay
+        anim.duration = ms
+        anim.interpolator = ExpoEase(EXPO, easeOut)
+        anim.addListener(object : AnimatorListenerAdapter() {
+            private var cancelled = false
+            override fun onAnimationCancel(animation: Animator) {
+                cancelled = true
+            }
+
+            override fun onAnimationEnd(animation: Animator) {
+                if (spins[face] === anim) spins.remove(face)
+                if (!cancelled) end?.invoke()
+            }
+        })
+        spins[face] = anim
+        anim.start()
     }
 
     private fun releaseFace(face: View, cancel: Boolean) {
+        val running = spins.remove(face)
+        if (cancel) running?.cancel()
         if (cancel) face.animate().cancel()
         face.animate().setStartDelay(0L)
         face.animate().setInterpolator(android.view.animation.DecelerateInterpolator())
