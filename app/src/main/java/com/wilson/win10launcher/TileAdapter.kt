@@ -266,11 +266,32 @@ class TileAdapter(
             h.time.visibility = View.VISIBLE
             h.time.text = Tile.timeText(ctx)
             val small = t.size == Tile.SMALL || t.size == Tile.HALF
-            h.time.setTextSize(TypedValue.COMPLEX_UNIT_PX, faceH * if (small) 0.34f else 0.30f)
+            val wide = t.size == Tile.WIDE
             val timeLp = h.time.layoutParams as FrameLayout.LayoutParams
-            timeLp.gravity = android.view.Gravity.CENTER
-            timeLp.bottomMargin = if (small) 0 else dp(18)
-            h.time.layoutParams = timeLp
+            h.time.maxLines = 1
+            h.time.gravity = android.view.Gravity.CENTER
+            if (wide) {
+                // Grow the time until it fills the wide tile, leaving a strip for the date.
+                timeLp.width = ViewGroup.LayoutParams.MATCH_PARENT
+                timeLp.height = ViewGroup.LayoutParams.MATCH_PARENT
+                timeLp.gravity = android.view.Gravity.CENTER
+                timeLp.setMargins(dp(12), dp(2), dp(12), dp(28))
+                h.time.layoutParams = timeLp
+                h.time.setAutoSizeTextTypeUniformWithConfiguration(
+                    dp(28),
+                    faceH.coerceAtLeast(dp(48)),
+                    1,
+                    TypedValue.COMPLEX_UNIT_PX
+                )
+            } else {
+                h.time.setAutoSizeTextTypeWithDefaults(TextView.AUTO_SIZE_TEXT_TYPE_NONE)
+                timeLp.width = ViewGroup.LayoutParams.MATCH_PARENT
+                timeLp.height = ViewGroup.LayoutParams.WRAP_CONTENT
+                timeLp.gravity = android.view.Gravity.CENTER
+                timeLp.setMargins(0, 0, 0, if (small) 0 else dp(16))
+                h.time.layoutParams = timeLp
+                h.time.setTextSize(TypedValue.COMPLEX_UNIT_PX, faceH * if (small) 0.46f else 0.52f)
+            }
             labelLp.gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START
             labelLp.setMargins(dp(10), 0, dp(8), dp(8))
             h.label.layoutParams = labelLp
