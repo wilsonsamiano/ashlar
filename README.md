@@ -8,7 +8,7 @@ Beta for sideload. Package `com.wilson.win10launcher`, so it will not clash with
 
 ## Download the beta
 
-**[Win10Launcher-2.9.apk](https://github.com/wilsonsamiano/win10-launcher/releases/download/v2.9.0-beta/Win10Launcher-2.9.apk)** — version 2.9 (versionCode 20)
+**[Win10Launcher-2.10.apk](https://github.com/wilsonsamiano/win10-launcher/releases/download/v2.10.0-beta/Win10Launcher-2.10.apk)** — version 2.10 (versionCode 21)
 
 1. Download the APK onto the tablet (Onn 8.1 and other Android 8+ devices).
 2. Open it and allow install from that source if Android asks.
@@ -20,7 +20,7 @@ Beta for sideload. Package `com.wilson.win10launcher`, so it will not clash with
 - Start screen: half, small, medium, and wide tiles in the accent color
 - **Edit** rearranges the layout: long-press and drag tiles, tap a tile to resize or unpin
 - Clock tile shows the live time and the date. On a wide tile the time grows to fill the tile
-- All apps: long-press an app to pin it or uninstall it. System apps cannot be uninstalled
+- All apps: long-press an app to pin it or uninstall it. Android asks you to confirm. Preinstalled system apps open App info instead
 - Press a tile and it tilts toward your finger, then springs back
 - Icons are sized to fill the tile, with the name still visible underneath
 - Swipe left on Start, or tap **ALL APPS**: the screen slides (flat, no page turn)
