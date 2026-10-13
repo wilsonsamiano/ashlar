@@ -42,11 +42,7 @@ class AllAppsActivity : AppCompatActivity() {
         setTheme(if (prefs.darkTheme) R.style.Theme_Win10_Dark else R.style.Theme_Win10_Light)
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_all_apps)
-
-        if (android.os.Build.VERSION.SDK_INT >= 34) {
-            overrideActivityTransition(OVERRIDE_TRANSITION_OPEN, R.anim.slide_in_right, R.anim.hold)
-            overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE, R.anim.hold, R.anim.slide_out_right)
-        }
+        PageTurn.arm(this)
         pickMode = intent.getBooleanExtra("pick", false)
         val titleBar = findViewById<TextView>(R.id.titleBar)
         titleBar.text = if (pickMode) "Tap an app to pin it" else "All apps"
@@ -215,7 +211,6 @@ class AllAppsActivity : AppCompatActivity() {
 
     override fun finish() {
         super.finish()
-        @Suppress("DEPRECATION")
-        overridePendingTransition(R.anim.hold, R.anim.slide_out_right)
+        PageTurn.back(this)
     }
 }

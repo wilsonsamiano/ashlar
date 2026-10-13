@@ -21,11 +21,30 @@ data class Tile(val pkg: String, val cls: String, val label: String, var size: I
         const val SMALL = 0
         const val MEDIUM = 1
         const val WIDE = 2
+        /** Half the width and height of a small tile. */
+        const val HALF = 3
+        /** 12 columns so a half tile is one cell and a small tile stays 2x2. */
+        const val GRID = 12
+
+        fun span(size: Int, totalCols: Int = GRID) = when (size) {
+            WIDE -> totalCols
+            MEDIUM -> 4
+            SMALL -> 2
+            else -> 1
+        }
+
+        fun rows(size: Int) = when (size) {
+            WIDE -> 4
+            MEDIUM -> 4
+            SMALL -> 2
+            else -> 1
+        }
     }
 }
 
 /**
- * Start-screen tile grid. 6 small-columns; small=1x1, medium=2x2, wide=full-width x2.
+ * Start-screen tile grid. Half=1x1, small=2x2, medium=4x4, wide=full width x4
+ * on a 12-column grid (same visual sizes as the old 6-column layout, plus half).
  * A null item at the end renders the "+" pin-new-app tile.
  */
 class TileAdapter(
@@ -42,19 +61,37 @@ class TileAdapter(
 
     private var items: List<Tile?> = emptyList()
     var accent: Int = prefs.accentColor
+    var editMode: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            notifyDataSetChanged()
+        }
 
     fun submit(tiles: List<Tile>) {
         items = tiles + listOf(null)
         notifyDataSetChanged()
     }
 
+    fun tiles(): List<Tile> = items.filterNotNull()
+
+    fun isAdd(position: Int) = items.getOrNull(position) == null
+
+    fun move(from: Int, to: Int): Boolean {
+        if (from == to) return false
+        if (from !in items.indices || to !in items.indices) return false
+        if (items[from] == null || items[to] == null) return false
+        val list = items.toMutableList()
+        val item = list.removeAt(from)
+        list.add(to, item)
+        items = list
+        notifyItemMoved(from, to)
+        return true
+    }
+
     fun spanFor(position: Int, totalCols: Int): Int {
-        val t = items.getOrNull(position) ?: return 1
-        return when (t.size) {
-            Tile.WIDE -> totalCols
-            Tile.MEDIUM -> 2
-            else -> 1
-        }
+        val t = items.getOrNull(position) ?: return Tile.span(Tile.SMALL, totalCols)
+        return Tile.span(t.size, totalCols)
     }
 
     class VH(v: View) : RecyclerView.ViewHolder(v) {
@@ -66,12 +103,14 @@ class TileAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
         val v = LayoutInflater.from(ctx).inflate(R.layout.item_tile, parent, false)
         val vh = VH(v)
-        // Windows 10 Mobile 3D tilt: tile leans toward the finger while pressed.
-        // Returning false lets click / long-click still fire normally.
+        // Windows 10 Mobile 3D tilt. Skipped while rearranging.
+        // Returning false lets click, long-click, and drag still fire.
         vh.root.setOnTouchListener { view, e ->
-            when (e.actionMasked) {
-                MotionEvent.ACTION_DOWN -> tilt(view, e.x, e.y)
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> untilt(view)
+            if (!editMode) {
+                when (e.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> tilt(view, e.x, e.y)
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> untilt(view)
+                }
             }
             false
         }
@@ -99,44 +138,49 @@ class TileAdapter(
 
     override fun onBindViewHolder(h: VH, position: Int) {
         val t = items[position]
-        // Recycled views must never keep a mid-tilt transform.
         h.root.animate().cancel()
         h.root.rotationX = 0f
         h.root.rotationY = 0f
         h.root.scaleX = 1f
         h.root.scaleY = 1f
+        h.root.elevation = if (editMode) dp(2).toFloat() else 0f
         val dm = ctx.resources.displayMetrics
-        val totalCols = 6
-        val gap = dp(4)
+        val totalCols = Tile.GRID
+        val gap = dp(2)
         val unit = (dm.widthPixels - dp(16)) / totalCols
         val lp = h.root.layoutParams as RecyclerView.LayoutParams
         lp.setMargins(gap, gap, gap, gap)
 
         if (t == null) {
-            // "+" tile: pin a new app
-            lp.width = unit - gap * 2
-            lp.height = unit - gap * 2
+            val s = Tile.span(Tile.SMALL)
+            lp.width = unit * s - gap * 2
+            lp.height = unit * s - gap * 2
             h.root.layoutParams = lp
             h.root.background = ColorDrawable(darken(accent, 0.75f))
+            sizeIcon(h.icon, dp(28))
             h.icon.setImageResource(android.R.drawable.ic_input_add)
             h.icon.imageTintList = ColorStateList.valueOf(Color.WHITE)
             h.label.text = ""
+            h.label.visibility = View.GONE
             h.root.setOnClickListener { onAction(Action.Add) }
             h.root.setOnLongClickListener(null)
             return
         }
 
-        val cols = when (t.size) {
-            Tile.WIDE -> totalCols
-            Tile.MEDIUM -> 2
-            else -> 1
-        }
-        val rows = if (t.size == Tile.SMALL) 1 else 2
+        val cols = Tile.span(t.size, totalCols)
+        val rows = Tile.rows(t.size)
         lp.width = unit * cols - gap * 2
         lp.height = unit * rows - gap * 2
         h.root.layoutParams = lp
         h.root.background = rippleBg(accent)
         h.icon.imageTintList = null
+        val iconPx = when (t.size) {
+            Tile.HALF -> dp(16)
+            Tile.SMALL -> dp(26)
+            Tile.MEDIUM -> dp(42)
+            else -> dp(48)
+        }
+        sizeIcon(h.icon, iconPx)
         try {
             h.icon.setImageDrawable(
                 ctx.packageManager.getActivityIcon(ComponentName(t.pkg, t.cls))
@@ -144,9 +188,34 @@ class TileAdapter(
         } catch (e: Exception) {
             h.icon.setImageDrawable(null)
         }
-        h.label.text = t.label
-        h.root.setOnClickListener { onAction(Action.Launch(t, h.root)) }
-        h.root.setOnLongClickListener { onAction(Action.Options(t, h.root)); true }
+        if (t.size == Tile.HALF) {
+            h.label.visibility = View.GONE
+        } else {
+            h.label.visibility = View.VISIBLE
+            h.label.text = t.label
+            h.label.textSize = if (t.size == Tile.SMALL) 10f else 12f
+        }
+        h.root.setOnClickListener {
+            if (editMode) onAction(Action.Options(t, h.root))
+            else onAction(Action.Launch(t, h.root))
+        }
+        h.root.setOnLongClickListener {
+            if (editMode) {
+                false
+            } else {
+                onAction(Action.Options(t, h.root))
+                true
+            }
+        }
+    }
+
+    private fun sizeIcon(icon: ImageView, px: Int) {
+        val lp = icon.layoutParams
+        if (lp.width != px || lp.height != px) {
+            lp.width = px
+            lp.height = px
+            icon.layoutParams = lp
+        }
     }
 
     /** 3D press tilt, Windows 10 Mobile style. */

@@ -2,15 +2,34 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/root"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:clipChildren="false">
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/tileGrid"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:clipChildren="false"
         android:clipToPadding="false"
-        android:padding="8dp"
+        android:paddingStart="8dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="72dp"
         android:scrollbars="vertical" />
+
+    <TextView
+        android:id="@+id/editBanner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:fontFamily="sans-serif-light"
+        android:paddingStart="16dp"
+        android:paddingTop="10dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="8dp"
+        android:text="Drag tiles to move. Tap a tile to resize or unpin."
+        android:textSize="14sp"
+        android:visibility="gone" />
 
     <LinearLayout
         android:layout_width="wrap_content"
@@ -20,22 +39,32 @@
         android:padding="8dp">
 
         <Button
+            android:id="@+id/editBtn"
+            style="?attr/borderlessButtonStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:minWidth="48dp"
+            android:text="EDIT"
+            android:textColor="?android:attr/textColorPrimary"
+            android:textSize="13sp" />
+
+        <Button
             android:id="@+id/allAppsBtn"
+            style="?attr/borderlessButtonStyle"
             android:layout_width="wrap_content"
             android:layout_height="48dp"
             android:minWidth="48dp"
             android:text="ALL APPS"
-            android:textSize="13sp"
-            style="?attr/borderlessButtonStyle"
-            android:textColor="?android:attr/textColorPrimary" />
+            android:textColor="?android:attr/textColorPrimary"
+            android:textSize="13sp" />
 
         <Button
             android:id="@+id/settingsBtn"
+            style="?attr/borderlessButtonStyle"
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:text="⚙"
-            android:textSize="20sp"
-            style="?attr/borderlessButtonStyle"
-            android:textColor="?android:attr/textColorPrimary" />
+            android:textColor="?android:attr/textColorPrimary"
+            android:textSize="20sp" />
     </LinearLayout>
 </FrameLayout>
