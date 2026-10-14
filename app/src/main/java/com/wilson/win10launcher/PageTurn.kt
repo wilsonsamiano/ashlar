@@ -1,14 +1,14 @@
 package com.wilson.win10launcher
 
-import android.animation.Animator
-import android.animation.AnimatorListenerAdapter
-import android.animation.ValueAnimator
 import android.app.Activity
 import android.content.Intent
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
+import android.view.animation.DecelerateInterpolator
 import android.view.animation.Interpolator
 import androidx.recyclerview.widget.RecyclerView
 import kotlin.math.hypot
@@ -34,6 +34,13 @@ import kotlin.math.hypot
  *
  * App list (arrow, or swipe left on Start): not a turnstile. The videos show
  * a flat horizontal slide of the whole screen. No rotation.
+ *
+ * The swing itself runs on the RenderThread. View.animate() of rotation,
+ * translation, and scale is handed to the GPU when nothing listens to each
+ * frame. An end action or an update listener pulls that work back onto the UI
+ * thread, which is what made a slow tablet drop frames in the middle of the
+ * turn. Completion is a one-shot clock instead. The ease is still Silverlight
+ * ExponentialEase exponent 6; the render thread samples it once into a table.
  */
 object PageTurn {
 
@@ -49,10 +56,19 @@ object PageTurn {
     /** Left hinge. Negative: Android's positive rotationY is the mirror of WP7. */
     private const val OPEN = -72f
 
+    private val EASE_IN = ExpoEase(EXPO, false)
+    private val EASE_OUT = ExpoEase(EXPO, true)
+    private val DECEL = DecelerateInterpolator()
+    private val handler = Handler(Looper.getMainLooper())
+    private var laterToken = 0
+    private var laterRunnable: Runnable? = null
+    private var waveFaces: List<View> = emptyList()
+
+    /** True while a turn, slide, or tile wave is in flight. Clocks must not invalidate then. */
+    fun animating(): Boolean = laterRunnable != null
+
     /** Left hinge of the screen, and the vertical middle. Same point for every tile. */
     private class Hinge(val x: Float, val y: Float, val pageW: Float)
-
-    private var wave: ValueAnimator? = null
 
     fun noSystemAnim(activity: Activity) {
         if (Build.VERSION.SDK_INT >= 34) {
@@ -154,7 +170,7 @@ object PageTurn {
             then()
             return
         }
-        wave?.cancel()
+        cancelMotion()
         val loc = IntArray(2)
         tapped.getLocationOnScreen(loc)
         val ox = loc[0] + tapped.width / 2f
@@ -170,40 +186,43 @@ object PageTurn {
             }
         }
         unclip(grid)
+        tapped.animate().cancel()
         tapped.animate()
             .scaleX(0.9f)
             .scaleY(0.9f)
             .setStartDelay(0L)
             .setDuration(PUSH_MS)
-            .setInterpolator(android.view.animation.DecelerateInterpolator())
-            .withEndAction {
-                if (!grid.isAttachedToWindow) {
-                    then()
-                    return@withEndAction
-                }
-                val hinge = pageHinge(grid)
-                val tiles = ArrayList<TileSpin>(faces.size)
-                for (face in facesOf(grid)) {
-                    face.rotationX = 0f
-                    face.rotationY = 0f
-                    face.scaleX = 1f
-                    face.scaleY = 1f
-                    hingeFace(face, hinge)
-                    tiles.add(TileSpin(face, featherDelay(face, ox, oy, face === tapped, true)))
-                }
-                playWave(tiles, 0f, OPEN, FEATHER_OUT, easeOut = false, end = then)
-            }
+            .setInterpolator(DECEL)
             .start()
+        later(PUSH_MS) {
+            if (!grid.isAttachedToWindow) {
+                then()
+                return@later
+            }
+            val hinge = pageHinge(grid)
+            val tiles = ArrayList<TileSpin>(faces.size)
+            for (face in facesOf(grid)) {
+                face.animate().cancel()
+                face.rotationX = 0f
+                face.rotationY = 0f
+                face.scaleX = 1f
+                face.scaleY = 1f
+                hingeFace(face, hinge)
+                tiles.add(TileSpin(face, featherDelay(face, ox, oy, face === tapped, true)))
+            }
+            playWave(tiles, 0f, OPEN, FEATHER_OUT, easeOut = false, end = then)
+        }
     }
 
     fun featherReturn(grid: RecyclerView, ox: Float, oy: Float) {
         onPreDraw(grid) {
-            wave?.cancel()
+            cancelMotion()
             unclip(grid)
             val hinge = pageHinge(grid)
             val faces = facesOf(grid)
             val tiles = ArrayList<TileSpin>(faces.size)
             for (face in faces) {
+                face.animate().cancel()
                 face.rotationX = 0f
                 face.rotationY = 0f
                 face.scaleX = 1f
@@ -219,8 +238,9 @@ object PageTurn {
     }
 
     fun featherReset(grid: RecyclerView) {
-        wave?.cancel()
-        wave = null
+        val extra = waveFaces
+        cancelMotion()
+        for (face in extra) releaseFace(face)
         for (face in facesOf(grid)) releaseFace(face)
     }
 
@@ -231,6 +251,7 @@ object PageTurn {
 
     /** Finger tracking. Flat. The view itself moves — there is no second copy. */
     fun trackSlide(page: View, x: Float) {
+        cancelLater()
         page.animate().cancel()
         page.rotationY = 0f
         page.rotationX = 0f
@@ -283,7 +304,11 @@ object PageTurn {
 
     private class TileSpin(val face: View, val delay: Long)
 
-    /** One clock for every tile. Each tile is a GPU texture so the long turn stays smooth. */
+    /**
+     * One render-thread animator per tile. No per-frame listener, or the whole
+     * wave would fall back to the UI thread. The clock below only starts the
+     * next screen; it does not move the tiles.
+     */
     private fun playWave(
         tiles: List<TileSpin>,
         from: Float,
@@ -292,37 +317,56 @@ object PageTurn {
         easeOut: Boolean,
         end: (() -> Unit)?
     ) {
-        wave?.cancel()
         if (tiles.isEmpty()) {
             end?.invoke()
             return
         }
-        val ease = ExpoEase(EXPO, easeOut)
+        val ease = if (easeOut) EASE_OUT else EASE_IN
         var maxDelay = 0L
-        for (t in tiles) if (t.delay > maxDelay) maxDelay = t.delay
-        val anim = ValueAnimator.ofFloat(0f, 1f)
-        anim.duration = maxDelay + ms
-        anim.addUpdateListener {
-            val now = anim.currentPlayTime
-            for (t in tiles) {
-                val u = if (now <= t.delay) 0f
-                else ((now - t.delay).toFloat() / ms.toFloat()).coerceIn(0f, 1f)
-                t.face.rotationY = from + (to - from) * ease.getInterpolation(u)
-            }
+        val faces = ArrayList<View>(tiles.size)
+        for (t in tiles) {
+            if (t.delay > maxDelay) maxDelay = t.delay
+            val face = t.face
+            face.animate().cancel()
+            face.rotationY = from
+            face.animate()
+                .rotationY(to)
+                .setStartDelay(t.delay)
+                .setDuration(ms)
+                .setInterpolator(ease)
+                .start()
+            faces.add(face)
         }
-        anim.addListener(object : AnimatorListenerAdapter() {
-            private var cancelled = false
-            override fun onAnimationCancel(animation: Animator) {
-                cancelled = true
-            }
+        waveFaces = faces
+        later(maxDelay + ms) {
+            waveFaces = emptyList()
+            end?.invoke()
+        }
+    }
 
-            override fun onAnimationEnd(animation: Animator) {
-                if (wave === anim) wave = null
-                if (!cancelled) end?.invoke()
-            }
-        })
-        wave = anim
-        anim.start()
+    private fun cancelMotion() {
+        cancelLater()
+        val faces = waveFaces
+        waveFaces = emptyList()
+        for (face in faces) face.animate().cancel()
+    }
+
+    private fun cancelLater() {
+        laterToken++
+        laterRunnable?.let { handler.removeCallbacks(it) }
+        laterRunnable = null
+    }
+
+    private fun later(ms: Long, block: () -> Unit) {
+        cancelLater()
+        val token = laterToken
+        val run = Runnable {
+            if (token != laterToken) return@Runnable
+            laterRunnable = null
+            block()
+        }
+        laterRunnable = run
+        handler.postDelayed(run, ms)
     }
 
     private fun unclip(grid: RecyclerView) {
@@ -339,9 +383,7 @@ object PageTurn {
     private fun hingeFace(face: View, hinge: Hinge) {
         val loc = IntArray(2)
         face.getLocationOnScreen(loc)
-        if (face.layerType != View.LAYER_TYPE_HARDWARE) {
-            face.setLayerType(View.LAYER_TYPE_HARDWARE, null)
-        }
+        warm(face)
         face.pivotX = hinge.x - loc[0]
         face.pivotY = hinge.y - loc[1]
         face.cameraDistance = hinge.pageW * 4.8f
@@ -374,13 +416,14 @@ object PageTurn {
             .rotationY(0f)
             .scaleX(1f)
             .scaleY(1f)
+            .setStartDelay(0L)
             .setDuration(SLIDE_MS)
-            .setInterpolator(ExpoEase(EXPO, easeOut))
-            .withEndAction {
-                if (!hold) release(page)
-                then?.invoke()
-            }
+            .setInterpolator(if (easeOut) EASE_OUT else EASE_IN)
             .start()
+        later(SLIDE_MS) {
+            if (!hold) release(page)
+            then?.invoke()
+        }
     }
 
     private fun spin(
@@ -397,13 +440,14 @@ object PageTurn {
             .translationX(0f)
             .scaleX(1f)
             .scaleY(1f)
+            .setStartDelay(0L)
             .setDuration(ms)
-            .setInterpolator(ExpoEase(EXPO, easeOut))
-            .withEndAction {
-                if (!hold) release(page)
-                then?.invoke()
-            }
+            .setInterpolator(if (easeOut) EASE_OUT else EASE_IN)
             .start()
+        later(ms) {
+            if (!hold) release(page)
+            then?.invoke()
+        }
     }
 
     private fun flat(page: View) {
@@ -416,13 +460,23 @@ object PageTurn {
     /** One texture for the whole page. Rotating the live grid draws the tiles twice. */
     private fun hinge(page: View) {
         flat(page)
-        page.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        warm(page)
         val h = if (page.height > 0) page.height else (page.parent as? View)?.height ?: 0
         page.pivotX = 0f
         page.pivotY = h / 2f
         val w = widthOf(page)
         // Far enough that the near edge doesn't balloon, close enough to read as a hinge.
         page.cameraDistance = w * 4.8f
+    }
+
+    /** Rasterize the hardware layer now, so the turn only has to spin a texture. */
+    private fun warm(view: View) {
+        if (view.layerType != View.LAYER_TYPE_HARDWARE) {
+            view.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        }
+        if (view.isAttachedToWindow && view.width > 0 && view.height > 0) {
+            view.buildLayer()
+        }
     }
 
     private fun release(page: View) {
@@ -454,12 +508,15 @@ object PageTurn {
     }
 
     /** Silverlight ExponentialEase, exponent 6, as in the phone toolkit. */
-    private class ExpoEase(private val exponent: Float, private val out: Boolean) : Interpolator {
+    private class ExpoEase(exponent: Float, private val out: Boolean) : Interpolator {
+        private val scale = Math.exp(exponent.toDouble()) - 1.0
+        private val n = exponent.toDouble()
+
+        private fun easeIn(x: Float): Float {
+            return ((Math.exp(n * x) - 1.0) / scale).toFloat()
+        }
+
         override fun getInterpolation(t: Float): Float {
-            fun easeIn(x: Float): Float {
-                val e = Math.exp(exponent.toDouble())
-                return ((Math.exp(exponent * x.toDouble()) - 1.0) / (e - 1.0)).toFloat()
-            }
             return if (out) 1f - easeIn(1f - t) else easeIn(t)
         }
     }

@@ -34,7 +34,12 @@ class MainActivity : AppCompatActivity() {
     private var appliedDark = true
     private val timeTick = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (::adapter.isInitialized && ::grid.isInitialized) adapter.paintClocks(grid)
+            // A clock rewrite during a turn rebuilds the tile texture mid-spin.
+            if (::adapter.isInitialized && ::grid.isInitialized
+                && !adapter.featherHold && !PageTurn.animating()
+            ) {
+                adapter.paintClocks(grid)
+            }
             if (prefs.themeMode == "sun" && prefs.darkTheme != appliedDark && !isFinishing) recreate()
         }
     }
@@ -161,9 +166,17 @@ class MainActivity : AppCompatActivity() {
 
     private fun refresh() {
         findViewById<View>(R.id.root).setBackgroundColor(prefs.bgColor())
-        adapter.accent = prefs.accentColor
-        adapter.submit(prefs.loadTiles())
-        grid.requestLayout()
+        val nextAccent = prefs.accentColor
+        val next = prefs.loadTiles()
+        // Coming back from an app used to rebind every icon on the frame the tiles unfold.
+        val same = nextAccent == adapter.accent && next == adapter.tiles()
+        adapter.accent = nextAccent
+        if (!same) {
+            adapter.submit(next)
+            grid.requestLayout()
+        } else if (!adapter.featherHold && !PageTurn.animating()) {
+            adapter.paintClocks(grid)
+        }
         applyChrome()
     }
 
