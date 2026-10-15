@@ -1,11 +1,8 @@
 package com.wilson.win10launcher
 
 import android.content.Intent
-import android.content.pm.ApplicationInfo
 import android.content.res.ColorStateList
-import android.net.Uri
 import android.os.Bundle
-import android.provider.Settings
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.LayoutInflater
@@ -217,72 +214,21 @@ class AllAppsActivity : AppCompatActivity() {
         if (pickMode) finish()
     }
 
-    /** Menu label. System apps that cannot be removed open App info instead. */
-    private fun uninstallLabel(app: AppList.App): String? {
-        if (Tile.isClock(app.pkg, app.cls)) return null
-        return try {
-            val info = packageManager.getApplicationInfo(app.pkg, 0)
-            val system = info.flags and ApplicationInfo.FLAG_SYSTEM != 0
-            val updated = info.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP != 0
-            when {
-                system && updated -> "Uninstall updates"
-                system -> "App info"
-                else -> "Uninstall"
-            }
-        } catch (e: Exception) {
-            "Uninstall"
-        }
-    }
-
     private fun showAppMenu(app: AppList.App, anchor: View) {
         val menu = PopupMenu(this, anchor)
         menu.menu.add("Pin to Start")
-        val uninstall = uninstallLabel(app)
+        val uninstall = Uninstall.label(this, app.pkg, app.cls)
         if (uninstall != null) menu.menu.add(uninstall)
         menu.setOnMenuItemClickListener { item ->
             when (item.title.toString()) {
                 "Pin to Start" -> pinApp(app)
-                "Uninstall", "Uninstall updates" -> requestUninstall(app)
-                "App info" -> openAppInfo(app)
+                "Uninstall", "Uninstall updates", "App info" -> {
+                    if (Uninstall.start(this, app.pkg, app.label)) reloadOnResume = true
+                }
             }
             true
         }
         menu.show()
-    }
-
-    private fun requestUninstall(app: AppList.App) {
-        val uri = Uri.fromParts("package", app.pkg, null)
-        val delete = Intent(Intent.ACTION_DELETE, uri).addCategory(Intent.CATEGORY_DEFAULT)
-        val legacy = Intent(Intent.ACTION_UNINSTALL_PACKAGE, uri).apply {
-            addCategory(Intent.CATEGORY_DEFAULT)
-            putExtra(Intent.EXTRA_RETURN_RESULT, true)
-        }
-        val intent = when {
-            delete.resolveActivity(packageManager) != null -> delete
-            legacy.resolveActivity(packageManager) != null -> legacy
-            else -> null
-        }
-        if (intent != null) {
-            try {
-                reloadOnResume = true
-                startActivity(intent)
-                return
-            } catch (e: Exception) {
-                reloadOnResume = false
-            }
-        }
-        openAppInfo(app)
-    }
-
-    private fun openAppInfo(app: AppList.App) {
-        val uri = Uri.fromParts("package", app.pkg, null)
-        try {
-            reloadOnResume = true
-            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, uri))
-        } catch (e: Exception) {
-            reloadOnResume = false
-            Toast.makeText(this, "Can't uninstall ${app.label}", Toast.LENGTH_SHORT).show()
-        }
     }
 
     private fun reloadApps() {

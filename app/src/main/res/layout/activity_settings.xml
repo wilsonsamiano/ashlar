@@ -110,5 +110,44 @@
             android:layout_height="48dp"
             android:layout_marginTop="12dp"
             android:text="Check for updates" />
+
+        <TextView
+            android:id="@+id/supportTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="28dp"
+            android:fontFamily="sans-serif-light"
+            android:text="Support"
+            android:textSize="22sp" />
+
+        <TextView
+            android:id="@+id/supportBlurb"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:fontFamily="sans-serif-light"
+            android:text="If a tile or the turn breaks on another device, send a report. It includes the device, Android version, and the last crash."
+            android:textSize="15sp" />
+
+        <Button
+            android:id="@+id/diagBtn"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="12dp"
+            android:text="View diagnostics" />
+
+        <Button
+            android:id="@+id/reportBtn"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="8dp"
+            android:text="Send report" />
+
+        <Button
+            android:id="@+id/coffeeBtn"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="8dp"
+            android:text="Buy me a coffee" />
     </LinearLayout>
 </ScrollView>

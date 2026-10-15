@@ -1,9 +1,13 @@
 package com.wilson.win10launcher
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.text.format.DateFormat
@@ -12,9 +16,11 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.GridLayoutManager
@@ -60,7 +66,7 @@ class SettingsActivity : AppCompatActivity() {
         title = "Launcher settings"
 
         findViewById<View>(R.id.root).setBackgroundColor(prefs.bgColor())
-        for (id in listOf(R.id.accentTitle, R.id.themeTitle, R.id.themeStatus, R.id.updateTitle, R.id.updateStatus)) {
+        for (id in listOf(R.id.accentTitle, R.id.themeTitle, R.id.themeStatus, R.id.updateTitle, R.id.updateStatus, R.id.supportTitle, R.id.supportBlurb)) {
             findViewById<TextView>(id).setTextColor(prefs.fgColor())
         }
 
@@ -109,7 +115,63 @@ class SettingsActivity : AppCompatActivity() {
             }
         }
         lookForUpdate(updateBtn, updateStatus)
+        findViewById<Button>(R.id.diagBtn).setOnClickListener { showDiagnostics() }
+        findViewById<Button>(R.id.reportBtn).setOnClickListener { sendReport() }
+        findViewById<Button>(R.id.coffeeBtn).setOnClickListener { openCoffee() }
         PageTurn.enterTurn(findViewById(android.R.id.content))
+    }
+
+    private fun showDiagnostics() {
+        val text = TextView(this)
+        val pad = (16 * resources.displayMetrics.density).toInt()
+        text.setPadding(pad, pad, pad, pad)
+        text.setTextColor(prefs.fgColor())
+        text.textSize = 13f
+        text.setTextIsSelectable(true)
+        text.text = Diagnostics.report(this)
+        val scroll = ScrollView(this)
+        scroll.addView(text)
+        AlertDialog.Builder(this)
+            .setTitle("Diagnostics")
+            .setView(scroll)
+            .setPositiveButton("Send report") { _, _ -> sendReport() }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    private fun sendReport() {
+        val body = Diagnostics.report(this)
+        val email = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:${Diagnostics.REPORT_EMAIL}")).apply {
+            putExtra(Intent.EXTRA_SUBJECT, "Win10 Launcher report")
+            putExtra(Intent.EXTRA_TEXT, body)
+        }
+        try {
+            startActivity(email)
+            return
+        } catch (e: Exception) {
+            Diagnostics.note(this, "mail failed: ${e.javaClass.simpleName}")
+        }
+        val share = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_EMAIL, arrayOf(Diagnostics.REPORT_EMAIL))
+            putExtra(Intent.EXTRA_SUBJECT, "Win10 Launcher report")
+            putExtra(Intent.EXTRA_TEXT, body)
+        }
+        try {
+            startActivity(Intent.createChooser(share, "Send report"))
+        } catch (e: Exception) {
+            val clip = getSystemService(ClipboardManager::class.java)
+            clip.setPrimaryClip(ClipData.newPlainText("Win10 report", body))
+            Toast.makeText(this, "Report copied. Paste it in an email to ${Diagnostics.REPORT_EMAIL}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun openCoffee() {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Diagnostics.COFFEE)))
+        } catch (e: Exception) {
+            Toast.makeText(this, Diagnostics.COFFEE, Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun chooseSun() {

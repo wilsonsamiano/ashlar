@@ -278,6 +278,7 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 leave = Leave.NONE
                 PageTurn.featherReset(grid)
+                Diagnostics.note(this, "open ${t.pkg} failed: ${e.javaClass.simpleName}")
             }
         }
     }
@@ -288,12 +289,18 @@ class MainActivity : AppCompatActivity() {
         pm.menu.add("Medium tile")
         pm.menu.add("Wide tile")
         pm.menu.add("Unpin from Start")
+        val remove = Uninstall.label(this, t.pkg, t.cls)
+        if (remove != null) pm.menu.add(remove)
         if (!adapter.editMode) pm.menu.add("Move tiles")
         pm.setOnMenuItemClickListener { item ->
             when (item.title.toString()) {
                 "Move tiles" -> {
                     adapter.editMode = true
                     applyChrome()
+                    return@setOnMenuItemClickListener true
+                }
+                "Uninstall", "Uninstall updates", "App info" -> {
+                    Uninstall.start(this, t.pkg, t.label)
                     return@setOnMenuItemClickListener true
                 }
             }
