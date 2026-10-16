@@ -15,6 +15,7 @@ import android.widget.ImageView
 import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -48,6 +49,12 @@ class AllAppsActivity : AppCompatActivity() {
         setContentView(R.layout.activity_all_apps)
         val page = findViewById<View>(android.R.id.content)
         page.setBackgroundColor(prefs.bgColor())
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                slideClosed = true
+                finish()
+            }
+        })
         if (savedInstanceState == null) {
             PageTurn.enterSlide(page, resources.displayMetrics.widthPixels.toFloat())
         }
@@ -327,10 +334,16 @@ class AllAppsActivity : AppCompatActivity() {
     }
 
     private var closing = false
+    private var slideClosed = false
 
     override fun finish() {
         if (closing) return
         closing = true
+        if (!slideClosed) {
+            super.finish()
+            PageTurn.noSystemAnim(this)
+            return
+        }
         PageTurn.slideAwayRight(findViewById(android.R.id.content)) {
             super.finish()
             PageTurn.noSystemAnim(this)

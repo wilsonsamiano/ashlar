@@ -19,6 +19,7 @@ import android.widget.Button
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -63,6 +64,12 @@ class SettingsActivity : AppCompatActivity() {
         setContentView(R.layout.activity_settings)
         val page = findViewById<View>(android.R.id.content)
         page.setBackgroundColor(prefs.bgColor())
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                slideClosed = true
+                finish()
+            }
+        })
         title = "Launcher settings"
 
         findViewById<View>(R.id.root).setBackgroundColor(prefs.bgColor())
@@ -331,10 +338,16 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private var closing = false
+    private var slideClosed = false
 
     override fun finish() {
         if (closing) return
         closing = true
+        if (!slideClosed) {
+            super.finish()
+            PageTurn.noSystemAnim(this)
+            return
+        }
         PageTurn.slideAwayRight(findViewById(android.R.id.content)) {
             super.finish()
             PageTurn.noSystemAnim(this)

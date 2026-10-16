@@ -126,7 +126,15 @@ class MainActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         if (!::grid.isInitialized) return
-        // Already home. Don't replay a slide or the wallpaper shows through.
+        // Swipe-home should show Start immediately. A return wave leaves the
+        // bottom tiles folded until the animation catches up.
+        val home = intent.action == Intent.ACTION_MAIN && intent.hasCategory(Intent.CATEGORY_HOME)
+        if (home) {
+            leave = Leave.NONE
+            featherToken++
+            adapter.featherHold = false
+            PageTurn.featherReset(grid)
+        }
         val page = page()
         page.animate().cancel()
         page.translationX = 0f
