@@ -88,6 +88,7 @@ class MainActivity : AppCompatActivity() {
             appendAtEnd = { adapter.isAdd(it) }
         )
         grid.itemAnimator = null
+        grid.overScrollMode = View.OVER_SCROLL_NEVER
         grid.adapter = adapter
         grid.addOnItemTouchListener(organizeDrag())
         grid.addOnItemTouchListener(swipeAllApps())
@@ -134,7 +135,7 @@ class MainActivity : AppCompatActivity() {
                     PageTurn.flatten(grid)
                 }, 1100L)
             }
-            Leave.NONE -> PageTurn.flatten(grid)
+            Leave.NONE -> if (!PageTurn.animating()) PageTurn.flatten(grid)
         }
         leave = Leave.NONE
     }
@@ -173,9 +174,10 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.root).setBackgroundColor(prefs.bgColor())
         val nextAccent = prefs.accentColor
         val next = prefs.loadTiles()
-        // Coming back from an app used to rebind every icon on the frame the tiles unfold.
-        val same = nextAccent == adapter.accent && next == adapter.tiles()
+        val plates = prefs.iconPlate
+        val same = nextAccent == adapter.accent && plates == adapter.iconPlate && next == adapter.tiles()
         adapter.accent = nextAccent
+        adapter.iconPlate = plates
         if (!same) {
             adapter.submit(next)
             grid.requestLayout()
@@ -379,6 +381,8 @@ class MainActivity : AppCompatActivity() {
                     if (!moved && dx * dx + dy * dy < dp(8) * dp(8)) return false
                     if (!moved) {
                         moved = true
+                        organizeTile = tile
+                        rememberHomes()
                         view.cancelLongPress()
                         view.animate().cancel()
                         view.scaleX = 1.05f
@@ -414,6 +418,7 @@ class MainActivity : AppCompatActivity() {
                     else if (e.y > rv.height - edge) rv.scrollBy(0, step)
                     val shifted = view.top - topBefore
                     if (shifted != 0) view.translationY -= shifted
+                    previewHover(rv, view)
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     val left = view.left + view.translationX
@@ -428,25 +433,79 @@ class MainActivity : AppCompatActivity() {
                     (rv.layoutManager as? TileLayoutManager)?.held = null
                     child = null
                     tile = null
+                    organizeTile = null
                     moved = false
+                    hoverCol = Int.MIN_VALUE
+                    hoverRow = Int.MIN_VALUE
                     if (place && dropped != null) dropTile(rv, dropped, left, top)
+                    else {
+                        restoreHomes()
+                        rv.requestLayout()
+                    }
                 }
             }
         }
     }
 
+    private var organizeTile: Tile? = null
+    private var hoverCol = Int.MIN_VALUE
+    private var hoverRow = Int.MIN_VALUE
+    private var homes: List<Pair<Tile, Pair<Int, Int>>>? = null
+
+    private fun rememberHomes() {
+        homes = adapter.tiles().map { it to (it.col to it.row) }
+        hoverCol = Int.MIN_VALUE
+        hoverRow = Int.MIN_VALUE
+    }
+
+    private fun restoreHomes() {
+        homes?.forEach { (t, spot) ->
+            t.col = spot.first
+            t.row = spot.second
+        }
+    }
+
+    private fun previewHover(rv: RecyclerView, view: View) {
+        val dragging = organizeTile ?: return
+        val lm = rv.layoutManager as? TileLayoutManager ?: return
+        val (col, row) = lm.cellAt(view.left + view.translationX, view.top + view.translationY)
+        val c = TileGrid.snapCol(dragging.size, col, cols)
+        val r = TileGrid.snapRow(row)
+        if (c == hoverCol && r == hoverRow) return
+        hoverCol = c
+        hoverRow = r
+        restoreHomes()
+        val tiles = adapter.tiles()
+        val target = tiles.find { it.pkg == dragging.pkg && it.cls == dragging.cls } ?: return
+        if (c != target.col || r != target.row) {
+            TileGrid.shiftForHover(tiles, target, c, r, cols)
+        }
+        rv.requestLayout()
+    }
+
     private fun dropTile(rv: RecyclerView, tile: Tile, left: Float, top: Float) {
         val lm = rv.layoutManager as? TileLayoutManager ?: return
         val (col, row) = lm.cellAt(left, top)
-        val tiles = adapter.tiles().toMutableList()
+        val tiles = adapter.tiles()
         val target = tiles.find { it.pkg == tile.pkg && it.cls == tile.cls } ?: return
-        val taken = run {
-            val c = TileGrid.snapCol(target.size, col, cols)
-            val r = TileGrid.snapRow(row)
-            c != target.col || r != target.row
+        restoreHomes()
+        val c = TileGrid.snapCol(target.size, col, cols)
+        val r = TileGrid.snapRow(row)
+        if (c == target.col && r == target.row) {
+            rv.requestLayout()
+            return
         }
-        if (!TileGrid.tryMove(tiles, target, col, row, cols)) {
-            if (taken) Toast.makeText(this, "That spot is taken", Toast.LENGTH_SHORT).show()
+        if (!TileGrid.shiftForHover(tiles, target, c, r, cols)) {
+            Toast.makeText(this, "No room there", Toast.LENGTH_SHORT).show()
+            rv.requestLayout()
+            return
+        }
+        target.col = c
+        target.row = r
+        if (!TileGrid.fits(tiles, target, cols)) {
+            restoreHomes()
+            Toast.makeText(this, "No room there", Toast.LENGTH_SHORT).show()
+            rv.requestLayout()
             return
         }
         prefs.saveTiles(tiles)

@@ -164,6 +164,11 @@ class Prefs(private val appCtx: Context) {
         get() = sp.getInt("topAppCount", 8).coerceIn(0, 16)
         set(v) { sp.edit().putInt("topAppCount", v.coerceIn(0, 16)).apply() }
 
+    /** Draw the round plate behind an adaptive icon. Off shows the glyph only. */
+    var iconPlate: Boolean
+        get() = sp.getBoolean("iconPlate", true)
+        set(v) { sp.edit().putBoolean("iconPlate", v).apply() }
+
     /**
      * Packages already on the device the first time this runs are not "new".
      * Anything installed after that stays at the top of All apps until it is opened.

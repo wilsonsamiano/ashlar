@@ -66,7 +66,7 @@ class SettingsActivity : AppCompatActivity() {
         title = "Launcher settings"
 
         findViewById<View>(R.id.root).setBackgroundColor(prefs.bgColor())
-        for (id in listOf(R.id.accentTitle, R.id.themeTitle, R.id.themeStatus, R.id.topTitle, R.id.topBlurb, R.id.topCount, R.id.updateTitle, R.id.updateStatus, R.id.supportTitle, R.id.supportBlurb)) {
+        for (id in listOf(R.id.accentTitle, R.id.themeTitle, R.id.themeStatus, R.id.iconTitle, R.id.topTitle, R.id.topBlurb, R.id.topCount, R.id.updateTitle, R.id.updateStatus, R.id.supportTitle, R.id.supportBlurb)) {
             findViewById<TextView>(id).setTextColor(prefs.fgColor())
         }
 
@@ -90,6 +90,16 @@ class SettingsActivity : AppCompatActivity() {
         lightBtn.alpha = if (mode == "light") 1f else 0.45f
         sunBtn.alpha = if (mode == "sun") 1f else 0.45f
         findViewById<TextView>(R.id.themeStatus).text = themeStatus()
+
+        val iconBtn = findViewById<Button>(R.id.iconPlateBtn)
+        fun paintIcons() {
+            iconBtn.text = if (prefs.iconPlate) "Icon circles on" else "Icon circles off"
+        }
+        paintIcons()
+        iconBtn.setOnClickListener {
+            prefs.iconPlate = !prefs.iconPlate
+            paintIcons()
+        }
 
         val topCount = findViewById<TextView>(R.id.topCount)
         fun paintTop() {
@@ -133,7 +143,9 @@ class SettingsActivity : AppCompatActivity() {
         findViewById<Button>(R.id.diagBtn).setOnClickListener { showDiagnostics() }
         findViewById<Button>(R.id.reportBtn).setOnClickListener { sendReport() }
         findViewById<Button>(R.id.coffeeBtn).setOnClickListener { openCoffee() }
-        PageTurn.enterTurn(findViewById(android.R.id.content))
+        if (savedInstanceState == null) {
+            PageTurn.enterTurn(findViewById(android.R.id.content))
+        }
     }
 
     private fun showDiagnostics() {

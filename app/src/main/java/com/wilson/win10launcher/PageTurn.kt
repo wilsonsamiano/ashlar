@@ -406,6 +406,11 @@ object PageTurn {
     }
 
     private fun releaseFace(face: View) {
+        val clean = face.rotationX == 0f && face.rotationY == 0f &&
+            face.scaleX == 1f && face.scaleY == 1f &&
+            face.translationX == 0f && face.translationY == 0f &&
+            face.layerType == View.LAYER_TYPE_NONE
+        if (clean) return
         face.animate().setStartDelay(0L)
         face.animate().cancel()
         face.rotationX = 0f

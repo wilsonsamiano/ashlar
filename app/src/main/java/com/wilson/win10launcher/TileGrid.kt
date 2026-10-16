@@ -25,23 +25,78 @@ object TileGrid {
     }
 
     /**
-     * Put [tile] on this cell if nothing else is there.
-     * Returns false when the cell is taken or unchanged. Other tiles are not moved.
+     * Open the cell under a dragged tile. Tiles that would be covered slide to the
+     * nearest free cell, measured from where they already sit. The dragged tile
+     * itself stays on its home cell so the finger can keep holding it.
+     * Returns false if there is nowhere for a covered tile to go.
      */
-    fun tryMove(tiles: List<Tile>, tile: Tile, col: Int, row: Int, cols: Int): Boolean {
-        val c = snapCol(tile.size, col, cols)
+    fun shiftForHover(tiles: List<Tile>, mover: Tile, col: Int, row: Int, cols: Int): Boolean {
+        val c = snapCol(mover.size, col, cols)
         val r = snapRow(row)
-        if (c == tile.col && r == tile.row) return false
-        val oldC = tile.col
-        val oldR = tile.row
-        tile.col = c
-        tile.row = r
-        if (!fits(tiles, tile, cols)) {
-            tile.col = oldC
-            tile.row = oldR
-            return false
+        val saved = tiles.map { it to (it.col to it.row) }
+        mover.col = c
+        mover.row = r
+        val blockers = tiles.filter { it !== mover && overlap(it, mover, cols) }
+            .sortedWith(compareBy({ it.row }, { it.col }))
+        if (blockers.isEmpty()) {
+            mover.col = saved.first { it.first === mover }.second.first
+            mover.row = saved.first { it.first === mover }.second.second
+            return true
         }
+        val used = HashSet<Long>()
+        markTile(used, mover, cols)
+        for (t in tiles) {
+            if (t === mover || blockers.any { it === t }) continue
+            markTile(used, t, cols)
+        }
+        val limit = tiles.maxOf { t ->
+            if (t.row < 0) 0 else t.row + Tile.rows(t.size)
+        } + 8
+        for (b in blockers) {
+            val w = Tile.span(b.size, cols).coerceIn(1, cols)
+            val h = Tile.rows(b.size).coerceAtLeast(1)
+            var bestC = -1
+            var bestR = -1
+            var bestD = Int.MAX_VALUE
+            var bestTie = Int.MAX_VALUE
+            var rr = 0
+            while (rr <= limit) {
+                var cc = 0
+                while (cc <= cols - w) {
+                    if (free(used, cols, cc, rr, w, h)) {
+                        val d = kotlin.math.abs(cc - b.col) + kotlin.math.abs(rr - b.row)
+                        val tie = rr * cols + cc
+                        if (d < bestD || (d == bestD && tie < bestTie)) {
+                            bestD = d
+                            bestTie = tie
+                            bestC = cc
+                            bestR = rr
+                        }
+                    }
+                    cc += 2
+                }
+                rr += 2
+            }
+            if (bestC < 0) {
+                for ((t, spot) in saved) {
+                    t.col = spot.first
+                    t.row = spot.second
+                }
+                return false
+            }
+            b.col = bestC
+            b.row = bestR
+            mark(used, cols, bestC, bestR, w, h)
+        }
+        val home = saved.first { it.first === mover }.second
+        mover.col = home.first
+        mover.row = home.second
         return true
+    }
+
+    private fun markTile(used: HashSet<Long>, t: Tile, cols: Int) {
+        if (t.col < 0 || t.row < 0) return
+        mark(used, cols, t.col, t.row, Tile.span(t.size, cols), Tile.rows(t.size))
     }
 
     /** True when [tile]'s current cell does not cover another tile. */

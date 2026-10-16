@@ -8,7 +8,7 @@ Beta for sideload. Package `com.wilson.win10launcher`, so it will not clash with
 
 ## Download the beta
 
-**[Win10Launcher-2.23.apk](https://github.com/wilsonsamiano/win10-launcher/releases/download/v2.23.0-beta/Win10Launcher-2.23.apk)** — version 2.23 (versionCode 34)
+**[Win10Launcher-2.24.apk](https://github.com/wilsonsamiano/win10-launcher/releases/download/v2.24.0-beta/Win10Launcher-2.24.apk)** — version 2.24 (versionCode 35)
 
 Source on `main` is **2.17** (versionCode 28). Same hinge, same exponential ease, drawn on the GPU render thread so a slow tablet keeps every frame. The APK linked above is still 2.16 until the next signed build. Install that build over this one. Tiles and settings stay.
 
