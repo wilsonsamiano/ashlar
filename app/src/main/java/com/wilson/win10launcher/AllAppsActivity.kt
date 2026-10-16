@@ -42,7 +42,7 @@ class AllAppsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         prefs = Prefs(this)
         appliedDark = prefs.darkTheme
-        setTheme(if (appliedDark) R.style.Theme_Win10_Dark else R.style.Theme_Win10_Light)
+        setTheme(if (appliedDark) R.style.Theme_Win10_Dark_Page else R.style.Theme_Win10_Light_Page)
         super.onCreate(savedInstanceState)
         PageTurn.noSystemAnim(this)
         setContentView(R.layout.activity_all_apps)

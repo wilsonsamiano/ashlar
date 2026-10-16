@@ -57,7 +57,7 @@ class SettingsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         prefs = Prefs(this)
         appliedDark = prefs.darkTheme
-        setTheme(if (appliedDark) R.style.Theme_Win10_Dark else R.style.Theme_Win10_Light)
+        setTheme(if (appliedDark) R.style.Theme_Win10_Dark_Page else R.style.Theme_Win10_Light_Page)
         super.onCreate(savedInstanceState)
         PageTurn.noSystemAnim(this)
         setContentView(R.layout.activity_settings)
@@ -113,6 +113,7 @@ class SettingsActivity : AppCompatActivity() {
                 }
                 iconRow.addView(btn)
             }
+            tintButtons(iconRow)
         }
         paintShapes()
 
@@ -158,9 +159,32 @@ class SettingsActivity : AppCompatActivity() {
         findViewById<Button>(R.id.diagBtn).setOnClickListener { showDiagnostics() }
         findViewById<Button>(R.id.reportBtn).setOnClickListener { sendReport() }
         findViewById<Button>(R.id.coffeeBtn).setOnClickListener { openCoffee() }
+        tintButtons(findViewById(R.id.root))
         if (savedInstanceState == null) {
-            PageTurn.enterTurn(findViewById(android.R.id.content))
+            PageTurn.enterSlide(findViewById(android.R.id.content), resources.displayMetrics.widthPixels.toFloat())
         }
+    }
+
+    private fun tintButtons(root: View) {
+        val ink = if (bright(prefs.accentColor)) Color.BLACK else Color.WHITE
+        val tint = android.content.res.ColorStateList.valueOf(prefs.accentColor)
+        fun walk(v: View) {
+            if (v is Button) {
+                v.backgroundTintList = tint
+                v.setTextColor(ink)
+            }
+            if (v is ViewGroup) {
+                for (i in 0 until v.childCount) walk(v.getChildAt(i))
+            }
+        }
+        walk(root)
+    }
+
+    private fun bright(color: Int): Boolean {
+        val r = Color.red(color) / 255.0
+        val g = Color.green(color) / 255.0
+        val b = Color.blue(color) / 255.0
+        return 0.299 * r + 0.587 * g + 0.114 * b > 0.72
     }
 
     private fun showDiagnostics() {
@@ -311,7 +335,7 @@ class SettingsActivity : AppCompatActivity() {
     override fun finish() {
         if (closing) return
         closing = true
-        PageTurn.leaveTurn(findViewById(android.R.id.content)) {
+        PageTurn.slideAwayRight(findViewById(android.R.id.content)) {
             super.finish()
             PageTurn.noSystemAnim(this)
         }

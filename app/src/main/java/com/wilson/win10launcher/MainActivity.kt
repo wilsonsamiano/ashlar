@@ -116,10 +116,37 @@ class MainActivity : AppCompatActivity() {
             slideTo(Intent(this, AllAppsActivity::class.java))
         }
         findViewById<View>(R.id.settingsBtn).setOnClickListener {
-            turnTo(Intent(this, SettingsActivity::class.java))
+            slideTo(Intent(this, SettingsActivity::class.java))
         }
         if (savedInstanceState?.getBoolean("edit") == true) adapter.editMode = true
         refresh()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (!::grid.isInitialized) return
+        // Already home. Don't replay a slide or the wallpaper shows through.
+        val page = page()
+        page.animate().cancel()
+        page.translationX = 0f
+        page.rotationX = 0f
+        page.rotationY = 0f
+        if (leave == Leave.SLIDE) leave = Leave.NONE
+        (grid.layoutManager as? TileLayoutManager)?.let {
+            it.allowBungee = false
+            it.cancelSpring()
+        }
+    }
+
+    override fun onPause() {
+        if (leave != Leave.TURN && leave != Leave.FEATHER) {
+            val page = page()
+            page.animate().cancel()
+            page.translationX = 0f
+            page.rotationY = 0f
+        }
+        super.onPause()
     }
 
     private val switcherHold = Runnable {
@@ -181,9 +208,10 @@ class MainActivity : AppCompatActivity() {
         val page = page()
         when (returning) {
             Leave.SLIDE -> {
-                val w = if (page.width > 0) page.width.toFloat()
-                else resources.displayMetrics.widthPixels.toFloat()
-                PageTurn.returnSlide(page, -w)
+                val back = page()
+                back.animate().cancel()
+                back.translationX = 0f
+                back.rotationY = 0f
             }
             Leave.TURN -> PageTurn.returnTurn(page)
             Leave.FEATHER -> {
@@ -203,13 +231,8 @@ class MainActivity : AppCompatActivity() {
     private fun slideTo(intent: Intent) {
         if (leave != Leave.NONE) return
         leave = Leave.SLIDE
-        val page = page()
-        val w = if (page.width > 0) page.width.toFloat()
-        else resources.displayMetrics.widthPixels.toFloat()
-        PageTurn.leaveSlide(page, -w) {
-            startActivity(PageTurn.quiet(intent))
-            PageTurn.noSystemAnim(this)
-        }
+        startActivity(PageTurn.quiet(intent))
+        PageTurn.noSystemAnim(this)
     }
 
     private fun turnTo(intent: Intent, externalApp: Boolean = false) {
@@ -286,23 +309,16 @@ class MainActivity : AppCompatActivity() {
 
         override fun onTouchEvent(rv: RecyclerView, e: MotionEvent) {
             if (!dragging) return
-            val page = page()
-            val w = if (page.width > 0) page.width.toFloat()
-            else resources.displayMetrics.widthPixels.toFloat()
+            val w = rv.width.toFloat().coerceAtLeast(1f)
             val dx = (e.rawX - downRawX).coerceAtMost(0f)
             when (e.actionMasked) {
-                MotionEvent.ACTION_MOVE -> PageTurn.trackSlide(page, dx.coerceAtLeast(-w))
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     dragging = false
-                    if (e.actionMasked == MotionEvent.ACTION_UP && page.translationX < -w * 0.22f) {
-                        if (leave != Leave.NONE) return
-                        leave = Leave.SLIDE
-                        PageTurn.leaveSlide(page, -w) {
-                            startActivity(PageTurn.quiet(Intent(this@MainActivity, AllAppsActivity::class.java)))
-                            PageTurn.noSystemAnim(this@MainActivity)
-                        }
-                    } else {
-                        PageTurn.leaveSlide(page, 0f) {}
+                    val page = page()
+                    page.animate().cancel()
+                    page.translationX = 0f
+                    if (e.actionMasked == MotionEvent.ACTION_UP && dx < -w * 0.18f && leave == Leave.NONE) {
+                        slideTo(Intent(this@MainActivity, AllAppsActivity::class.java))
                     }
                 }
             }

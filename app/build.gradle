@@ -20,8 +20,8 @@ android {
         applicationId = "com.wilson.win10launcher"
         minSdk = 26
         targetSdk = 34
-        versionCode = 37
-        versionName = "2.26"
+        versionCode = 39
+        versionName = "2.28"
     }
 
     if (canSign) {

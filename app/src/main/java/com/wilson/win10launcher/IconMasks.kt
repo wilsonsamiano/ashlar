@@ -4,7 +4,9 @@ import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Path
+import android.graphics.Rect
 import android.graphics.RectF
+import android.graphics.drawable.AdaptiveIconDrawable
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.util.LruCache
@@ -35,13 +37,27 @@ object IconMasks {
         cache.get(key)?.let { return it }
         val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
-        val copy = src.constantState?.newDrawable(res)?.mutate() ?: return src
-        copy.setBounds(0, 0, size, size)
         canvas.clipPath(path(shape, size.toFloat()))
-        copy.draw(canvas)
+        val copy = src.constantState?.newDrawable(res)?.mutate() ?: src
+        if (copy is AdaptiveIconDrawable) {
+            // Draw the raw layers. AdaptiveIconDrawable.draw() would force the system circle.
+            val extra = (size * AdaptiveIconDrawable.getExtraInsetFraction()).toInt()
+            val bounds = Rect(-extra, -extra, size + extra, size + extra)
+            layer(res, copy.background, bounds)?.draw(canvas)
+            layer(res, copy.foreground, bounds)?.draw(canvas)
+        } else {
+            copy.setBounds(0, 0, size, size)
+            copy.draw(canvas)
+        }
         val out = BitmapDrawable(res, bmp)
         cache.put(key, out)
         return out
+    }
+
+    private fun layer(res: Resources, src: Drawable?, bounds: Rect): Drawable? {
+        val d = src?.constantState?.newDrawable(res)?.mutate() ?: src ?: return null
+        d.bounds = bounds
+        return d
     }
 
     private fun path(shape: String, s: Float): Path {
@@ -49,7 +65,7 @@ object IconMasks {
         val box = RectF(0f, 0f, s, s)
         when (shape) {
             CIRCLE -> p.addOval(box, Path.Direction.CW)
-            SQUARE -> p.addRoundRect(box, s * 0.04f, s * 0.04f, Path.Direction.CW)
+            SQUARE -> p.addRoundRect(box, s * 0.06f, s * 0.06f, Path.Direction.CW)
             ROUNDED -> p.addRoundRect(box, s * 0.22f, s * 0.22f, Path.Direction.CW)
             TEARDROP -> {
                 val r = s * 0.5f
@@ -59,7 +75,7 @@ object IconMasks {
                     Path.Direction.CW
                 )
             }
-            else -> p.addRoundRect(box, s * 0.38f, s * 0.38f, Path.Direction.CW)
+            else -> p.addRoundRect(box, s * 0.36f, s * 0.36f, Path.Direction.CW)
         }
         return p
     }
