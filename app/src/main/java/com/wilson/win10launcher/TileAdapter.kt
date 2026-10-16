@@ -188,6 +188,18 @@ class TileAdapter(
         return vh
     }
 
+    override fun onViewRecycled(h: VH) {
+        PageTurn.drop(h.face)
+    }
+
+    override fun onViewAttachedToWindow(h: VH) {
+        if (!PageTurn.owns(h.face)) PageTurn.drop(h.face)
+    }
+
+    override fun onViewDetachedFromWindow(h: VH) {
+        if (!PageTurn.animating()) PageTurn.drop(h.face)
+    }
+
     override fun getItemCount() = items.size
 
     private fun dp(n: Int): Int =
@@ -210,18 +222,8 @@ class TileAdapter(
     override fun onBindViewHolder(h: VH, position: Int) {
         val t = items[position]
         h.root.animate().cancel()
-        if (!featherHold) {
-            h.face.animate().setStartDelay(0L)
-            h.face.animate().setInterpolator(android.view.animation.DecelerateInterpolator())
-            h.face.animate().cancel()
-            h.face.rotationX = 0f
-            h.face.rotationY = 0f
-            h.face.scaleX = 1f
-            h.face.scaleY = 1f
-            if (h.face.width > 0 && h.face.height > 0) {
-                h.face.pivotX = h.face.width / 2f
-                h.face.pivotY = h.face.height / 2f
-            }
+        if (!PageTurn.owns(h.face)) {
+            PageTurn.drop(h.face)
         }
         h.face.elevation = if (editMode) dp(2).toFloat() else 0f
         val gap = dp(2)

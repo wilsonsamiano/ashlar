@@ -67,6 +67,22 @@ object PageTurn {
     /** True while a turn, slide, or tile wave is in flight. Clocks must not invalidate then. */
     fun animating(): Boolean = laterRunnable != null
 
+    fun owns(face: View): Boolean = waveFaces.any { it === face }
+
+    /** Drop a tile that left the screen so it cannot come back mid-turn. */
+    fun drop(face: View) {
+        if (owns(face)) waveFaces = waveFaces.filter { it !== face }
+        releaseFace(face)
+    }
+
+    /** Flatten every visible tile that is not in the current wave. */
+    fun flatten(grid: RecyclerView) {
+        for (i in 0 until grid.childCount) {
+            val face = grid.getChildAt(i).findViewById<View>(R.id.tileFace) ?: continue
+            if (!owns(face)) releaseFace(face)
+        }
+    }
+
     /** Left hinge of the screen, and the vertical middle. Same point for every tile. */
     private class Hinge(val x: Float, val y: Float, val pageW: Float)
 
@@ -348,7 +364,7 @@ object PageTurn {
         cancelLater()
         val faces = waveFaces
         waveFaces = emptyList()
-        for (face in faces) face.animate().cancel()
+        for (face in faces) releaseFace(face)
     }
 
     private fun cancelLater() {
@@ -390,11 +406,14 @@ object PageTurn {
     }
 
     private fun releaseFace(face: View) {
+        face.animate().setStartDelay(0L)
         face.animate().cancel()
         face.rotationX = 0f
         face.rotationY = 0f
         face.scaleX = 1f
         face.scaleY = 1f
+        face.translationX = 0f
+        face.translationY = 0f
         if (face.width > 0 && face.height > 0) {
             face.pivotX = face.width / 2f
             face.pivotY = face.height / 2f

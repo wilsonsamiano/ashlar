@@ -41,6 +41,7 @@ class MainActivity : AppCompatActivity() {
                 adapter.paintClocks(grid)
             }
             if (prefs.themeMode == "sun" && prefs.darkTheme != appliedDark && !isFinishing) recreate()
+            else if (::grid.isInitialized && !PageTurn.animating()) PageTurn.flatten(grid)
         }
     }
 
@@ -127,9 +128,12 @@ class MainActivity : AppCompatActivity() {
             Leave.TURN -> PageTurn.returnTurn(page)
             Leave.FEATHER -> {
                 PageTurn.featherReturn(grid, featherX, featherY)
-                grid.postDelayed({ adapter.featherHold = false }, 1100L)
+                grid.postDelayed({
+                    adapter.featherHold = false
+                    PageTurn.flatten(grid)
+                }, 1100L)
             }
-            Leave.NONE -> Unit
+            Leave.NONE -> PageTurn.flatten(grid)
         }
         leave = Leave.NONE
     }
@@ -271,7 +275,10 @@ class MainActivity : AppCompatActivity() {
         leave = Leave.FEATHER
         val token = ++featherToken
         PageTurn.featherOut(grid, view) {
-            if (token != featherToken || leave != Leave.FEATHER) return@featherOut
+            if (token != featherToken || leave != Leave.FEATHER) {
+                PageTurn.flatten(grid)
+                return@featherOut
+            }
             try {
                 startActivity(PageTurn.quiet(i), PageTurn.appOptions(this))
                 PageTurn.noSystemAnim(this)
