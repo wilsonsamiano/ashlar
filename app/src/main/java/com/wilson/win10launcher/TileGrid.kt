@@ -1,9 +1,8 @@
 package com.wilson.win10launcher
 
 /**
- * Tiles keep the cell they were put in. Dragging one tile does not
- * repack the rest. Only a tile that would sit on top of another moves,
- * and it moves straight down.
+ * Each tile stays in the cell it was given. Empty cells stay empty.
+ * A drag never moves any other tile.
  */
 object TileGrid {
 
@@ -25,37 +24,29 @@ object TileGrid {
         return changed
     }
 
-    /** Drop [tile] on this cell. Other tiles stay unless they overlap it. */
-    fun moveTo(tiles: MutableList<Tile>, tile: Tile, col: Int, row: Int, cols: Int) {
-        tile.col = snapCol(tile.size, col, cols)
-        tile.row = snapRow(row)
-        settle(tiles, tile, cols)
+    /**
+     * Put [tile] on this cell if nothing else is there.
+     * Returns false when the cell is taken or unchanged. Other tiles are not moved.
+     */
+    fun tryMove(tiles: List<Tile>, tile: Tile, col: Int, row: Int, cols: Int): Boolean {
+        val c = snapCol(tile.size, col, cols)
+        val r = snapRow(row)
+        if (c == tile.col && r == tile.row) return false
+        val oldC = tile.col
+        val oldR = tile.row
+        tile.col = c
+        tile.row = r
+        if (!fits(tiles, tile, cols)) {
+            tile.col = oldC
+            tile.row = oldR
+            return false
+        }
+        return true
     }
 
-    /** Keep [anchor] where it is. Push anything covering it downward. */
-    fun settle(tiles: MutableList<Tile>, anchor: Tile, cols: Int) {
-        anchor.col = snapCol(anchor.size, anchor.col.coerceAtLeast(0), cols)
-        anchor.row = snapRow(anchor.row.coerceAtLeast(0))
-        repeat(80) {
-            val placed = tiles.filter { it.col >= 0 && it.row >= 0 }
-            var moved = false
-            for (a in placed) {
-                for (b in placed) {
-                    if (a === b || !overlap(a, b, cols)) continue
-                    val push = when {
-                        a === anchor -> b
-                        b === anchor -> a
-                        a.row < b.row || (a.row == b.row && a.col <= b.col) -> b
-                        else -> a
-                    }
-                    push.row += 2
-                    moved = true
-                    break
-                }
-                if (moved) break
-            }
-            if (!moved) return
-        }
+    /** True when [tile]'s current cell does not cover another tile. */
+    fun fits(tiles: List<Tile>, tile: Tile, cols: Int): Boolean {
+        return tiles.none { it !== tile && overlap(it, tile, cols) }
     }
 
     private fun packSequence(tiles: List<Tile>, cols: Int) {

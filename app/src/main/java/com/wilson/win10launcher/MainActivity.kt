@@ -15,7 +15,6 @@ import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.RecyclerView
 
 class MainActivity : AppCompatActivity() {
@@ -90,7 +89,7 @@ class MainActivity : AppCompatActivity() {
         )
         grid.itemAnimator = null
         grid.adapter = adapter
-        ItemTouchHelper(dragCallback()).attachToRecyclerView(grid)
+        grid.addOnItemTouchListener(organizeDrag())
         grid.addOnItemTouchListener(swipeAllApps())
 
         editBtn.setOnClickListener {
@@ -319,12 +318,24 @@ class MainActivity : AppCompatActivity() {
             if (idx < 0) return@setOnMenuItemClickListener true
             when (item.title.toString()) {
                 "Unpin from Start" -> tiles.removeAt(idx)
-                "Small tile" -> tiles[idx].size = Tile.SMALL
-                "Medium tile" -> tiles[idx].size = Tile.MEDIUM
-                "Wide tile" -> tiles[idx].size = Tile.WIDE
+                "Small tile", "Medium tile", "Wide tile" -> {
+                    val tile = tiles[idx]
+                    val oldSize = tile.size
+                    val oldCol = tile.col
+                    tile.size = when (item.title.toString()) {
+                        "Small tile" -> Tile.SMALL
+                        "Medium tile" -> Tile.MEDIUM
+                        else -> Tile.WIDE
+                    }
+                    tile.col = TileGrid.snapCol(tile.size, tile.col, cols)
+                    if (!TileGrid.fits(tiles, tile, cols)) {
+                        tile.size = oldSize
+                        tile.col = oldCol
+                        Toast.makeText(this, "No room there", Toast.LENGTH_SHORT).show()
+                        return@setOnMenuItemClickListener true
+                    }
+                }
             }
-            val resized = item.title.toString() != "Unpin from Start"
-            if (resized && idx in tiles.indices) TileGrid.settle(tiles, tiles[idx], cols)
             prefs.saveTiles(tiles)
             refresh()
             true
@@ -332,89 +343,113 @@ class MainActivity : AppCompatActivity() {
         pm.show()
     }
 
-    private var dragging = false
+    /** Drag a tile by its top-left. Empty cells are allowed. Other tiles stay put. */
+    private fun organizeDrag() = object : RecyclerView.SimpleOnItemTouchListener() {
+        private var child: View? = null
+        private var tile: Tile? = null
+        private var startX = 0f
+        private var startY = 0f
+        private var lastX = 0f
+        private var lastY = 0f
+        private var moved = false
 
-    private fun dragCallback() = object : ItemTouchHelper.SimpleCallback(
-        ItemTouchHelper.UP or ItemTouchHelper.DOWN or
-            ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT,
-        0
-    ) {
-        override fun isLongPressDragEnabled() = adapter.editMode
-
-        override fun getMovementFlags(
-            recyclerView: RecyclerView,
-            viewHolder: RecyclerView.ViewHolder
-        ): Int {
-            val pos = viewHolder.bindingAdapterPosition
-            if (!adapter.editMode || pos == RecyclerView.NO_POSITION || adapter.isAdd(pos)) {
-                return 0
+        override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
+            if (!adapter.editMode || leave != Leave.NONE) return false
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    val hit = rv.findChildViewUnder(e.x, e.y)
+                    val pos = if (hit == null) RecyclerView.NO_POSITION else rv.getChildAdapterPosition(hit)
+                    if (hit == null || pos == RecyclerView.NO_POSITION || adapter.isAdd(pos)) {
+                        child = null
+                        tile = null
+                        return false
+                    }
+                    child = hit
+                    tile = adapter.tileAt(pos)
+                    startX = e.x
+                    startY = e.y
+                    lastX = e.x
+                    lastY = e.y
+                    moved = false
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val view = child ?: return false
+                    val dx = e.x - startX
+                    val dy = e.y - startY
+                    if (!moved && dx * dx + dy * dy < dp(8) * dp(8)) return false
+                    if (!moved) {
+                        moved = true
+                        view.cancelLongPress()
+                        view.animate().cancel()
+                        view.scaleX = 1.05f
+                        view.scaleY = 1.05f
+                        view.translationZ = dp(12).toFloat()
+                        (rv.layoutManager as? TileLayoutManager)?.held = view
+                        view.parent?.requestDisallowInterceptTouchEvent(true)
+                    }
+                    return true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (!moved) {
+                        child = null
+                        tile = null
+                    }
+                }
             }
-            return makeMovementFlags(
-                ItemTouchHelper.UP or ItemTouchHelper.DOWN or
-                    ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT,
-                0
-            )
-        }
-
-        override fun canDropOver(
-            recyclerView: RecyclerView,
-            current: RecyclerView.ViewHolder,
-            target: RecyclerView.ViewHolder
-        ): Boolean {
-            val pos = target.bindingAdapterPosition
-            return pos != RecyclerView.NO_POSITION && !adapter.isAdd(pos)
-        }
-
-        override fun onMove(
-            recyclerView: RecyclerView,
-            viewHolder: RecyclerView.ViewHolder,
-            target: RecyclerView.ViewHolder
-        ): Boolean {
-            // List order is not the screen. Moving the list repacks every tile.
             return false
         }
 
-        override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {}
-
-        override fun onSelectedChanged(viewHolder: RecyclerView.ViewHolder?, actionState: Int) {
-            super.onSelectedChanged(viewHolder, actionState)
-            if (actionState == ItemTouchHelper.ACTION_STATE_DRAG && viewHolder != null) {
-                dragging = true
-                val face = viewHolder.itemView.findViewById<View>(R.id.tileFace) ?: viewHolder.itemView
-                face.animate().scaleX(1.05f).scaleY(1.05f)
-                    .setStartDelay(0L)
-                    .setInterpolator(android.view.animation.DecelerateInterpolator())
-                    .setDuration(100).start()
-                face.elevation = dp(12).toFloat()
+        override fun onTouchEvent(rv: RecyclerView, e: MotionEvent) {
+            val view = child ?: return
+            when (e.actionMasked) {
+                MotionEvent.ACTION_MOVE -> {
+                    view.translationX += e.x - lastX
+                    view.translationY += e.y - lastY
+                    lastX = e.x
+                    lastY = e.y
+                    val edge = dp(36)
+                    val step = dp(14)
+                    val topBefore = view.top
+                    if (e.y < edge) rv.scrollBy(0, -step)
+                    else if (e.y > rv.height - edge) rv.scrollBy(0, step)
+                    val shifted = view.top - topBefore
+                    if (shifted != 0) view.translationY -= shifted
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    val left = view.left + view.translationX
+                    val top = view.top + view.translationY
+                    val dropped = tile
+                    val place = e.actionMasked == MotionEvent.ACTION_UP
+                    view.translationX = 0f
+                    view.translationY = 0f
+                    view.translationZ = 0f
+                    view.scaleX = 1f
+                    view.scaleY = 1f
+                    (rv.layoutManager as? TileLayoutManager)?.held = null
+                    child = null
+                    tile = null
+                    moved = false
+                    if (place && dropped != null) dropTile(rv, dropped, left, top)
+                }
             }
         }
+    }
 
-        override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
-            val item = viewHolder.itemView
-            val pos = viewHolder.bindingAdapterPosition
-            val left = item.left + item.translationX
-            val top = item.top + item.translationY
-            val drop = dragging
-            dragging = false
-            super.clearView(recyclerView, viewHolder)
-            val face = item.findViewById<View>(R.id.tileFace) ?: item
-            face.animate().scaleX(1f).scaleY(1f)
-                .setStartDelay(0L)
-                .setInterpolator(android.view.animation.DecelerateInterpolator())
-                .setDuration(100).start()
-            face.elevation = if (adapter.editMode) dp(2).toFloat() else 0f
-            if (!drop || pos == RecyclerView.NO_POSITION || adapter.isAdd(pos)) return
-            val tile = adapter.tileAt(pos) ?: return
-            val lm = recyclerView.layoutManager as? TileLayoutManager ?: return
-            val (col, row) = lm.cellAt(left, top)
-            val tiles = adapter.tiles().toMutableList()
-            val target = tiles.find { it.pkg == tile.pkg && it.cls == tile.cls } ?: return
-            val before = tiles.map { listOf(it.pkg, it.cls, it.col, it.row, it.size) }
-            TileGrid.moveTo(tiles, target, col, row, cols)
-            val after = tiles.map { listOf(it.pkg, it.cls, it.col, it.row, it.size) }
-            if (before == after) return
-            prefs.saveTiles(tiles)
-            adapter.submit(tiles)
+    private fun dropTile(rv: RecyclerView, tile: Tile, left: Float, top: Float) {
+        val lm = rv.layoutManager as? TileLayoutManager ?: return
+        val (col, row) = lm.cellAt(left, top)
+        val tiles = adapter.tiles().toMutableList()
+        val target = tiles.find { it.pkg == tile.pkg && it.cls == tile.cls } ?: return
+        val taken = run {
+            val c = TileGrid.snapCol(target.size, col, cols)
+            val r = TileGrid.snapRow(row)
+            c != target.col || r != target.row
         }
+        if (!TileGrid.tryMove(tiles, target, col, row, cols)) {
+            if (taken) Toast.makeText(this, "That spot is taken", Toast.LENGTH_SHORT).show()
+            return
+        }
+        prefs.saveTiles(tiles)
+        adapter.submit(tiles)
     }
 }

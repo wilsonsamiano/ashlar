@@ -34,6 +34,9 @@ class TileLayoutManager(
 
     override fun supportsPredictiveItemAnimations() = false
 
+    /** The tile under the finger. Layout must not scrap it or the drag dies. */
+    var held: View? = null
+
     override fun onLayoutChildren(recycler: RecyclerView.Recycler, state: RecyclerView.State) {
         if (itemCount == 0) {
             detachAndScrapAttachedViews(recycler)
@@ -43,12 +46,22 @@ class TileLayoutManager(
             return
         }
         if (state.isPreLayout || width <= 0) return
-        detachAndScrapAttachedViews(recycler)
+        val keep = held
+        val keepX = keep?.translationX ?: 0f
+        val keepY = keep?.translationY ?: 0f
+        var i = childCount - 1
+        while (i >= 0) {
+            if (getChildAt(i) !== keep) detachAndScrapViewAt(i, recycler)
+            i--
+        }
         pack()
         val maxScroll = (contentHeight - height).coerceAtLeast(0)
         if (scrollOffset > maxScroll) scrollOffset = maxScroll
         if (scrollOffset < 0) scrollOffset = 0
         fill(recycler)
+        keep?.translationX = keepX
+        keep?.translationY = keepY
+        keep?.bringToFront()
     }
 
     override fun scrollVerticallyBy(
@@ -148,6 +161,10 @@ class TileLayoutManager(
         var i = childCount - 1
         while (i >= 0) {
             val child = getChildAt(i) ?: break
+            if (child === held) {
+                i--
+                continue
+            }
             val pos = getPosition(child)
             val slot = slots.getOrNull(pos)
             if (slot == null || slot.bottom <= top || slot.top >= bottom) {
