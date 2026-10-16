@@ -15,6 +15,7 @@ class TileLayoutManager(
     private val cols: Int,
     private val spanOf: (Int) -> Int,
     private val rowsOf: (Int) -> Int,
+    private val originOf: (Int) -> Pair<Int, Int>? = { null },
     private val appendAtEnd: (Int) -> Boolean = { false }
 ) : RecyclerView.LayoutManager() {
 
@@ -74,6 +75,15 @@ class TileLayoutManager(
 
     override fun computeVerticalScrollExtent(state: RecyclerView.State) = height
 
+    /** Cell under a dragged tile's top-left, in grid coordinates. */
+    fun cellAt(viewLeft: Float, viewTop: Float): Pair<Int, Int> {
+        val contentW = width - paddingLeft - paddingRight
+        val cell = if (contentW > 0) contentW / cols else 1
+        val col = kotlin.math.round((viewLeft - paddingLeft) / cell).toInt()
+        val row = kotlin.math.round((viewTop + scrollOffset - paddingTop) / cell).toInt()
+        return col.coerceAtLeast(0) to row.coerceAtLeast(0)
+    }
+
     private fun pack() {
         slots.clear()
         val contentW = width - paddingLeft - paddingRight
@@ -94,24 +104,33 @@ class TileLayoutManager(
         for (i in 0 until itemCount) {
             val w = spanOf(i).coerceIn(1, cols)
             val h = rowsOf(i).coerceAtLeast(1)
+            val saved = if (appendAtEnd(i)) null else originOf(i)
             var row = if (appendAtEnd(i)) depth else 0
             var col = 0
-            var found = false
-            val limit = row + itemCount * (h + 2) + 8
-            while (!found && row < limit) {
-                var c = 0
-                while (c <= cols - w) {
-                    if (free(c, row, w, h)) {
-                        for (y in row until row + h) {
-                            for (x in c until c + w) used.add(y.toLong() * cols + x)
-                        }
-                        col = c
-                        found = true
-                        break
-                    }
-                    c++
+            if (saved != null) {
+                col = saved.first.coerceIn(0, (cols - w).coerceAtLeast(0))
+                row = saved.second.coerceAtLeast(0)
+                for (y in row until row + h) {
+                    for (x in col until col + w) used.add(y.toLong() * cols + x)
                 }
-                if (!found) row++
+            } else {
+                var found = false
+                val limit = row + itemCount * (h + 2) + 8
+                while (!found && row < limit) {
+                    var c = 0
+                    while (c <= cols - w) {
+                        if (free(c, row, w, h)) {
+                            for (y in row until row + h) {
+                                for (x in c until c + w) used.add(y.toLong() * cols + x)
+                            }
+                            col = c
+                            found = true
+                            break
+                        }
+                        c++
+                    }
+                    if (!found) row++
+                }
             }
             val left = paddingLeft + col * cell
             val top = paddingTop + row * cell

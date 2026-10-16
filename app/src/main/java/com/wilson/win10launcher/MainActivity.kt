@@ -85,6 +85,7 @@ class MainActivity : AppCompatActivity() {
             cols,
             spanOf = { adapter.spanFor(it, cols) },
             rowsOf = { adapter.rowsFor(it) },
+            originOf = { adapter.originFor(it) },
             appendAtEnd = { adapter.isAdd(it) }
         )
         grid.itemAnimator = null
@@ -322,12 +323,16 @@ class MainActivity : AppCompatActivity() {
                 "Medium tile" -> tiles[idx].size = Tile.MEDIUM
                 "Wide tile" -> tiles[idx].size = Tile.WIDE
             }
+            val resized = item.title.toString() != "Unpin from Start"
+            if (resized && idx in tiles.indices) TileGrid.settle(tiles, tiles[idx], cols)
             prefs.saveTiles(tiles)
             refresh()
             true
         }
         pm.show()
     }
+
+    private var dragging = false
 
     private fun dragCallback() = object : ItemTouchHelper.SimpleCallback(
         ItemTouchHelper.UP or ItemTouchHelper.DOWN or
@@ -365,11 +370,8 @@ class MainActivity : AppCompatActivity() {
             viewHolder: RecyclerView.ViewHolder,
             target: RecyclerView.ViewHolder
         ): Boolean {
-            val from = viewHolder.bindingAdapterPosition
-            val to = target.bindingAdapterPosition
-            if (!adapter.move(from, to)) return false
-            prefs.saveTiles(adapter.tiles())
-            return true
+            // List order is not the screen. Moving the list repacks every tile.
+            return false
         }
 
         override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {}
@@ -377,6 +379,7 @@ class MainActivity : AppCompatActivity() {
         override fun onSelectedChanged(viewHolder: RecyclerView.ViewHolder?, actionState: Int) {
             super.onSelectedChanged(viewHolder, actionState)
             if (actionState == ItemTouchHelper.ACTION_STATE_DRAG && viewHolder != null) {
+                dragging = true
                 val face = viewHolder.itemView.findViewById<View>(R.id.tileFace) ?: viewHolder.itemView
                 face.animate().scaleX(1.05f).scaleY(1.05f)
                     .setStartDelay(0L)
@@ -387,14 +390,31 @@ class MainActivity : AppCompatActivity() {
         }
 
         override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
+            val item = viewHolder.itemView
+            val pos = viewHolder.bindingAdapterPosition
+            val left = item.left + item.translationX
+            val top = item.top + item.translationY
+            val drop = dragging
+            dragging = false
             super.clearView(recyclerView, viewHolder)
-            val face = viewHolder.itemView.findViewById<View>(R.id.tileFace) ?: viewHolder.itemView
+            val face = item.findViewById<View>(R.id.tileFace) ?: item
             face.animate().scaleX(1f).scaleY(1f)
                 .setStartDelay(0L)
                 .setInterpolator(android.view.animation.DecelerateInterpolator())
                 .setDuration(100).start()
             face.elevation = if (adapter.editMode) dp(2).toFloat() else 0f
-            prefs.saveTiles(adapter.tiles())
+            if (!drop || pos == RecyclerView.NO_POSITION || adapter.isAdd(pos)) return
+            val tile = adapter.tileAt(pos) ?: return
+            val lm = recyclerView.layoutManager as? TileLayoutManager ?: return
+            val (col, row) = lm.cellAt(left, top)
+            val tiles = adapter.tiles().toMutableList()
+            val target = tiles.find { it.pkg == tile.pkg && it.cls == tile.cls } ?: return
+            val before = tiles.map { listOf(it.pkg, it.cls, it.col, it.row, it.size) }
+            TileGrid.moveTo(tiles, target, col, row, cols)
+            val after = tiles.map { listOf(it.pkg, it.cls, it.col, it.row, it.size) }
+            if (before == after) return
+            prefs.saveTiles(tiles)
+            adapter.submit(tiles)
         }
     }
 }

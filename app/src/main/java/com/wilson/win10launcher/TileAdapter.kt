@@ -21,7 +21,14 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-data class Tile(val pkg: String, val cls: String, val label: String, var size: Int) {
+data class Tile(
+    val pkg: String,
+    val cls: String,
+    val label: String,
+    var size: Int,
+    var col: Int = -1,
+    var row: Int = -1
+) {
     fun isClock() = Tile.isClock(pkg, cls)
     companion object {
         const val SMALL = 0
@@ -124,6 +131,14 @@ class TileAdapter(
     }
 
     fun tiles(): List<Tile> = items.filterNotNull()
+
+    fun originFor(position: Int): Pair<Int, Int>? {
+        val t = items.getOrNull(position) ?: return null
+        if (t.col < 0 || t.row < 0) return null
+        return t.col to t.row
+    }
+
+    fun tileAt(position: Int): Tile? = items.getOrNull(position)
 
     fun isAdd(position: Int) = items.getOrNull(position) == null
 

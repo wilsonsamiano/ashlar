@@ -48,7 +48,8 @@ class Prefs(private val appCtx: Context) {
     fun loadTiles(): List<Tile> {
         val raw = sp.getString("tiles", null)
         if (raw == null) {
-            val d = defaultTiles()
+            val d = defaultTiles().toMutableList()
+            TileGrid.ensurePlaced(d, Tile.GRID)
             saveTiles(d)
             sp.edit().putBoolean("clockSeeded", true).apply()
             return d
@@ -68,12 +69,14 @@ class Prefs(private val appCtx: Context) {
                         size = Tile.SMALL
                         retiredHalf = true
                     }
+                    val col = o.optInt("col", -1)
+                    val row = o.optInt("row", -1)
                     if (Tile.isClock(pkg, cls)) {
-                        out.add(Tile(pkg, cls, "Clock", size))
+                        out.add(Tile(pkg, cls, "Clock", size, col, row))
                         continue
                     }
                     pm.getActivityInfo(android.content.ComponentName(pkg, cls), 0)
-                    out.add(Tile(pkg, cls, o.getString("label"), size))
+                    out.add(Tile(pkg, cls, o.getString("label"), size, col, row))
                 } catch (e: PackageManager.NameNotFoundException) {
                     // app uninstalled -> drop the tile
                 }
@@ -84,9 +87,9 @@ class Prefs(private val appCtx: Context) {
         if (retiredHalf) saveTiles(out)
         if (!sp.getBoolean("clockSeeded", false)) {
             if (out.none { it.isClock() }) out.add(Tile.clock())
-            saveTiles(out)
             sp.edit().putBoolean("clockSeeded", true).apply()
         }
+        if (TileGrid.ensurePlaced(out, Tile.GRID) || retiredHalf) saveTiles(out)
         return out
     }
 
@@ -99,6 +102,8 @@ class Prefs(private val appCtx: Context) {
                     .put("cls", t.cls)
                     .put("label", t.label)
                     .put("size", t.size)
+                    .put("col", t.col)
+                    .put("row", t.row)
             )
         }
         sp.edit().putString("tiles", arr.toString()).apply()
