@@ -153,4 +153,47 @@ class Prefs(private val appCtx: Context) {
         }
         return out
     }
+
+    /** How many most-used apps sit under the new apps in All apps. */
+    var topAppCount: Int
+        get() = sp.getInt("topAppCount", 8).coerceIn(0, 16)
+        set(v) { sp.edit().putInt("topAppCount", v.coerceIn(0, 16)).apply() }
+
+    /**
+     * Packages already on the device the first time this runs are not "new".
+     * Anything installed after that stays at the top of All apps until it is opened.
+     */
+    fun ensureAppBaseline(pkgs: Collection<String>) {
+        if (sp.getBoolean("appsBaselined", false)) return
+        sp.edit().putStringSet("knownApps", pkgs.toSet()).putBoolean("appsBaselined", true).apply()
+    }
+
+    fun isNewApp(pkg: String): Boolean {
+        if (!sp.getBoolean("appsBaselined", false)) return false
+        if (pkg == appCtx.packageName) return false
+        return pkg !in knownApps()
+    }
+
+    fun noteLaunch(pkg: String) {
+        val known = knownApps().toMutableSet()
+        known.add(pkg)
+        val counts = launchCounts()
+        counts.put(pkg, counts.optInt(pkg) + 1)
+        sp.edit()
+            .putStringSet("knownApps", known)
+            .putString("launches", counts.toString())
+            .apply()
+    }
+
+    fun launchCount(pkg: String): Int = launchCounts().optInt(pkg)
+
+    private fun knownApps(): Set<String> = sp.getStringSet("knownApps", emptySet()) ?: emptySet()
+
+    private fun launchCounts(): org.json.JSONObject {
+        return try {
+            org.json.JSONObject(sp.getString("launches", "{}") ?: "{}")
+        } catch (e: Exception) {
+            org.json.JSONObject()
+        }
+    }
 }

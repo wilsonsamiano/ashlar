@@ -71,6 +71,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         prefs = Prefs(this)
+        prefs.ensureAppBaseline(AppList.load(packageManager).map { it.pkg })
         appliedDark = prefs.darkTheme
         setTheme(if (appliedDark) R.style.Theme_Win10_Dark else R.style.Theme_Win10_Light)
         super.onCreate(savedInstanceState)
@@ -282,6 +283,7 @@ class MainActivity : AppCompatActivity() {
             try {
                 startActivity(PageTurn.quiet(i), PageTurn.appOptions(this))
                 PageTurn.noSystemAnim(this)
+                prefs.noteLaunch(t.pkg)
             } catch (e: Exception) {
                 leave = Leave.NONE
                 PageTurn.featherReset(grid)

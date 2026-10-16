@@ -66,7 +66,7 @@ class SettingsActivity : AppCompatActivity() {
         title = "Launcher settings"
 
         findViewById<View>(R.id.root).setBackgroundColor(prefs.bgColor())
-        for (id in listOf(R.id.accentTitle, R.id.themeTitle, R.id.themeStatus, R.id.updateTitle, R.id.updateStatus, R.id.supportTitle, R.id.supportBlurb)) {
+        for (id in listOf(R.id.accentTitle, R.id.themeTitle, R.id.themeStatus, R.id.topTitle, R.id.topBlurb, R.id.topCount, R.id.updateTitle, R.id.updateStatus, R.id.supportTitle, R.id.supportBlurb)) {
             findViewById<TextView>(id).setTextColor(prefs.fgColor())
         }
 
@@ -90,6 +90,21 @@ class SettingsActivity : AppCompatActivity() {
         lightBtn.alpha = if (mode == "light") 1f else 0.45f
         sunBtn.alpha = if (mode == "sun") 1f else 0.45f
         findViewById<TextView>(R.id.themeStatus).text = themeStatus()
+
+        val topCount = findViewById<TextView>(R.id.topCount)
+        fun paintTop() {
+            val n = prefs.topAppCount
+            topCount.text = if (n == 0) "No most-used list" else "$n most used"
+        }
+        paintTop()
+        findViewById<Button>(R.id.topMinus).setOnClickListener {
+            prefs.topAppCount = prefs.topAppCount - 1
+            paintTop()
+        }
+        findViewById<Button>(R.id.topPlus).setOnClickListener {
+            prefs.topAppCount = prefs.topAppCount + 1
+            paintTop()
+        }
 
         findViewById<Button>(R.id.saveBtn).setOnClickListener {
             prefs.saveLayoutSnapshot()

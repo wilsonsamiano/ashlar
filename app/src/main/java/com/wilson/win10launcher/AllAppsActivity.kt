@@ -35,7 +35,7 @@ class AllAppsActivity : AppCompatActivity() {
     private var pickMode = false
 
     sealed class Row {
-        data class Header(val letter: Char, val position: Int) : Row()
+        data class Header(val title: String, val letter: Char?, val position: Int) : Row()
         data class Item(val app: AppList.App) : Row()
     }
 
@@ -58,6 +58,7 @@ class AllAppsActivity : AppCompatActivity() {
 
         all = (AppList.load(packageManager) + AppList.App(Tile.CLOCK_PKG, Tile.CLOCK_CLS, "Clock"))
             .sortedWith(compareBy({ it.label.lowercase() }, { it.pkg }))
+        prefs.ensureAppBaseline(all.map { it.pkg })
         adapter = AppsAdapter(
             onHeaderClick = { showLetterPicker() },
             onAppClick = { app -> pinApp(app) },
@@ -69,7 +70,7 @@ class AllAppsActivity : AppCompatActivity() {
         rv = findViewById(R.id.appsList)
         rv.layoutManager = LinearLayoutManager(this)
         rv.adapter = adapter
-        adapter.submit(buildSections(all))
+        adapter.submit(buildSections(all, true))
 
         findViewById<View>(R.id.root).setBackgroundColor(prefs.bgColor())
         val search = findViewById<EditText>(R.id.searchBox)
@@ -81,24 +82,57 @@ class AllAppsActivity : AppCompatActivity() {
             override fun afterTextChanged(s: Editable?) {
                 val q = s.toString().trim().lowercase()
                 val filtered = if (q.isEmpty()) all else all.filter { it.label.lowercase().contains(q) }
-                adapter.submit(buildSections(filtered))
+                adapter.submit(buildSections(filtered, q.isEmpty()))
             }
         })
     }
 
-    private fun buildSections(apps: List<AppList.App>): List<Row> {
+    private fun buildSections(apps: List<AppList.App>, grouped: Boolean): List<Row> {
         val rows = mutableListOf<Row>()
+        val body = if (!grouped) apps else {
+            val fresh = apps.filter { prefs.isNewApp(it.pkg) }
+                .sortedByDescending { installTime(it.pkg) }
+            val used = apps.filter { !prefs.isNewApp(it.pkg) && prefs.launchCount(it.pkg) > 0 }
+                .sortedWith(compareByDescending<AppList.App> { prefs.launchCount(it.pkg) }
+                    .thenBy { it.label.lowercase() })
+                .take(prefs.topAppCount)
+            val skip = (fresh + used).map { it.pkg + "\n" + it.cls }.toSet()
+            if (fresh.isNotEmpty()) {
+                rows.add(Row.Header("New", null, rows.size))
+                fresh.forEach { rows.add(Row.Item(it)) }
+            }
+            if (used.isNotEmpty()) {
+                rows.add(Row.Header("Most used", null, rows.size))
+                used.forEach { rows.add(Row.Item(it)) }
+            }
+            apps.filter { (it.pkg + "\n" + it.cls) !in skip }
+        }
         var lastLetter = '\u0000'
-        for (app in apps) {
+        for (app in body) {
             val letter = app.label.firstOrNull()?.uppercaseChar() ?: '#'
             val bucket = if (letter.isLetter()) letter else '#'
             if (bucket != lastLetter) {
-                rows.add(Row.Header(bucket, rows.size))
+                rows.add(Row.Header(bucket.toString(), bucket, rows.size))
                 lastLetter = bucket
             }
             rows.add(Row.Item(app))
         }
         return rows
+    }
+
+    private fun installTime(pkg: String): Long {
+        if (pkg == packageName) return 0L
+        return try {
+            val info = if (android.os.Build.VERSION.SDK_INT >= 33) {
+                packageManager.getPackageInfo(pkg, android.content.pm.PackageManager.PackageInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getPackageInfo(pkg, 0)
+            }
+            info.firstInstallTime
+        } catch (e: Exception) {
+            0L
+        }
     }
 
     private fun showLetterPicker() {
@@ -161,9 +195,9 @@ class AllAppsActivity : AppCompatActivity() {
             when (val r = rows[position]) {
                 is Row.Header -> {
                     val vh = h as HeaderVH
-                    vh.letter.text = r.letter.toString()
+                    vh.letter.text = r.title
                     vh.box.setBackgroundColor(prefs.accentColor)
-                    vh.itemView.setOnClickListener { onHeaderClick() }
+                    vh.itemView.setOnClickListener { if (r.letter != null) onHeaderClick() }
                 }
                 is Row.Item -> {
                     val vh = h as AppVH
@@ -236,7 +270,7 @@ class AllAppsActivity : AppCompatActivity() {
             .sortedWith(compareBy({ it.label.lowercase() }, { it.pkg }))
         val q = findViewById<EditText>(R.id.searchBox).text?.toString()?.trim()?.lowercase().orEmpty()
         val filtered = if (q.isEmpty()) all else all.filter { it.label.lowercase().contains(q) }
-        adapter.submit(buildSections(filtered))
+        adapter.submit(buildSections(filtered, q.isEmpty()))
     }
 
     private fun launchApp(app: AppList.App, view: View) {
@@ -260,6 +294,7 @@ class AllAppsActivity : AppCompatActivity() {
             try {
                 startActivity(PageTurn.quiet(i), PageTurn.appOptions(this))
                 PageTurn.noSystemAnim(this)
+                prefs.noteLaunch(app.pkg)
             } catch (e: Exception) {
                 turnedAway = false
                 PageTurn.featherReset(rv)
@@ -274,13 +309,13 @@ class AllAppsActivity : AppCompatActivity() {
             recreate()
             return
         }
-        if (reloadOnResume) {
-            reloadOnResume = false
+        if (!turnedAway) {
             reloadApps()
+            return
         }
-        if (!turnedAway) return
         turnedAway = false
         PageTurn.featherReturn(rv, featherX, featherY)
+        rv.postDelayed({ if (!isFinishing) reloadApps() }, 1000L)
     }
 
     private var closing = false

@@ -11,8 +11,11 @@
 
     <FrameLayout
         android:id="@+id/headerBox"
-        android:layout_width="40dp"
-        android:layout_height="40dp">
+        android:layout_width="wrap_content"
+        android:layout_height="40dp"
+        android:minWidth="40dp"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp">
 
         <TextView
             android:id="@+id/headerLetter"

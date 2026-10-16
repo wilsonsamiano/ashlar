@@ -87,6 +87,53 @@
             android:text="Restore saved layout" />
 
         <TextView
+            android:id="@+id/topTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="28dp"
+            android:fontFamily="sans-serif-light"
+            android:text="All apps"
+            android:textSize="22sp" />
+
+        <TextView
+            android:id="@+id/topBlurb"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:fontFamily="sans-serif-light"
+            android:text="New apps stay at the top until you open them. Under those, the apps you open most."
+            android:textSize="15sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/topMinus"
+                android:layout_width="64dp"
+                android:layout_height="48dp"
+                android:text="−" />
+
+            <TextView
+                android:id="@+id/topCount"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:fontFamily="sans-serif-light"
+                android:gravity="center"
+                android:textSize="18sp" />
+
+            <Button
+                android:id="@+id/topPlus"
+                android:layout_width="64dp"
+                android:layout_height="48dp"
+                android:text="+" />
+        </LinearLayout>
+
+        <TextView
             android:id="@+id/updateTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
