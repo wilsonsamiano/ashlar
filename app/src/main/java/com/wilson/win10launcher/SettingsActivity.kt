@@ -91,15 +91,30 @@ class SettingsActivity : AppCompatActivity() {
         sunBtn.alpha = if (mode == "sun") 1f else 0.45f
         findViewById<TextView>(R.id.themeStatus).text = themeStatus()
 
-        val iconBtn = findViewById<Button>(R.id.iconPlateBtn)
-        fun paintIcons() {
-            iconBtn.text = if (prefs.iconPlate) "Icon circles on" else "Icon circles off"
+        val iconRow = findViewById<android.widget.LinearLayout>(R.id.iconShapes)
+        fun paintShapes() {
+            iconRow.removeAllViews()
+            val pad = (6 * resources.displayMetrics.density).toInt()
+            for ((id, label) in IconMasks.choices) {
+                val btn = Button(this)
+                btn.text = label
+                btn.isAllCaps = false
+                val on = prefs.iconShape == id
+                btn.alpha = if (on) 1f else 0.45f
+                val lp = android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                    (48 * resources.displayMetrics.density).toInt()
+                )
+                lp.marginEnd = pad
+                btn.layoutParams = lp
+                btn.setOnClickListener {
+                    prefs.iconShape = id
+                    paintShapes()
+                }
+                iconRow.addView(btn)
+            }
         }
-        paintIcons()
-        iconBtn.setOnClickListener {
-            prefs.iconPlate = !prefs.iconPlate
-            paintIcons()
-        }
+        paintShapes()
 
         val topCount = findViewById<TextView>(R.id.topCount)
         fun paintTop() {

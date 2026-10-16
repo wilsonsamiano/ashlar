@@ -209,9 +209,17 @@ class AllAppsActivity : AppCompatActivity() {
                     } else {
                         vh.icon.imageTintList = null
                         try {
+                            val iconPx = vh.icon.layoutParams.width.let { w ->
+                                if (w > 1) w else (44 * resources.displayMetrics.density).toInt()
+                            }
                             vh.icon.setImageDrawable(
-                                packageManager.getActivityIcon(
-                                    android.content.ComponentName(r.app.pkg, r.app.cls)
+                                IconMasks.apply(
+                                    resources,
+                                    packageManager.getActivityIcon(
+                                        android.content.ComponentName(r.app.pkg, r.app.cls)
+                                    ),
+                                    prefs.iconShape,
+                                    iconPx
                                 )
                             )
                         } catch (e: Exception) {

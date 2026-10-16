@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
-import android.graphics.drawable.AdaptiveIconDrawable
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.RippleDrawable
@@ -115,8 +114,8 @@ class TileAdapter(
 
     private var items: List<Tile?> = emptyList()
     var accent: Int = prefs.accentColor
-    /** When false, adaptive icons draw the glyph only, with no round plate. */
-    var iconPlate: Boolean = prefs.iconPlate
+    /** system, circle, squircle, rounded, square, or teardrop. */
+    var iconShape: String = prefs.iconShape
     var editMode: Boolean = false
         set(value) {
             if (field == value) return
@@ -357,7 +356,7 @@ class TileAdapter(
         h.icon.layoutParams = iconLp
         h.label.layoutParams = labelLp
         try {
-            h.icon.setImageDrawable(tileIcon(t.pkg, t.cls))
+            h.icon.setImageDrawable(tileIcon(t.pkg, t.cls, iconPx))
         } catch (e: Exception) {
             h.icon.setImageDrawable(null)
         }
@@ -377,9 +376,9 @@ class TileAdapter(
         }
     }
 
-    private fun tileIcon(pkg: String, cls: String): Drawable? {
+    private fun tileIcon(pkg: String, cls: String, size: Int): Drawable? {
         val raw = ctx.packageManager.getActivityIcon(ComponentName(pkg, cls))
-        return if (!iconPlate && raw is AdaptiveIconDrawable) raw.foreground else raw
+        return IconMasks.apply(ctx.resources, raw, iconShape, size)
     }
 
     private fun cellSize(view: View): Int {

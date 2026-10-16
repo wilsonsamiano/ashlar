@@ -164,10 +164,24 @@ class Prefs(private val appCtx: Context) {
         get() = sp.getInt("topAppCount", 8).coerceIn(0, 16)
         set(v) { sp.edit().putInt("topAppCount", v.coerceIn(0, 16)).apply() }
 
-    /** Draw the round plate behind an adaptive icon. Off shows the glyph only. */
-    var iconPlate: Boolean
-        get() = sp.getBoolean("iconPlate", true)
-        set(v) { sp.edit().putBoolean("iconPlate", v).apply() }
+    /** Icon mask: system, circle, squircle, rounded, square, teardrop. */
+    var iconShape: String
+        get() = sp.getString("iconShape", IconMasks.SYSTEM) ?: IconMasks.SYSTEM
+        set(v) { sp.edit().putString("iconShape", v).apply() }
+
+    fun recentApps(): List<String> {
+        val saved = sp.getString("recent", null)
+            ?.split('\n')
+            ?.filter { it.isNotBlank() }
+            .orEmpty()
+        if (saved.isNotEmpty()) return saved
+        val counts = launchCounts()
+        val keys = counts.keys()
+        val ranked = ArrayList<String>()
+        while (keys.hasNext()) ranked.add(keys.next())
+        ranked.sortByDescending { counts.optInt(it) }
+        return ranked.take(8)
+    }
 
     /**
      * Packages already on the device the first time this runs are not "new".
@@ -189,9 +203,13 @@ class Prefs(private val appCtx: Context) {
         known.add(pkg)
         val counts = launchCounts()
         counts.put(pkg, counts.optInt(pkg) + 1)
+        val recent = recentApps().toMutableList()
+        recent.remove(pkg)
+        if (pkg != appCtx.packageName) recent.add(0, pkg)
         sp.edit()
             .putStringSet("knownApps", known)
             .putString("launches", counts.toString())
+            .putString("recent", recent.take(12).joinToString("\n"))
             .apply()
     }
 
