@@ -157,49 +157,6 @@ class MainActivity : AppCompatActivity() {
         super.onPause()
     }
 
-    private val switcherHold = Runnable {
-        if (!::adapter.isInitialized || adapter.editMode || leave != Leave.NONE) return@Runnable
-        val root = findViewById<ViewGroup>(R.id.root)
-        if (!VistaSwitcher.isOpen(root)) VistaSwitcher.show(this, root, prefs)
-    }
-    private var switcherArm = false
-    private var switcherReady = false
-    private var switcherX = 0f
-    private var switcherY = 0f
-
-    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        if (::adapter.isInitialized && !adapter.editMode && leave == Leave.NONE) {
-            val root = findViewById<ViewGroup>(R.id.root)
-            if (!VistaSwitcher.isOpen(root)) {
-                when (ev.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> {
-                        switcherArm = ev.y >= root.height - dp(96)
-                        switcherReady = false
-                        switcherX = ev.x
-                        switcherY = ev.y
-                        root.removeCallbacks(switcherHold)
-                    }
-                    MotionEvent.ACTION_MOVE -> {
-                        if (switcherArm && !switcherReady) {
-                            val up = switcherY - ev.y
-                            val dx = kotlin.math.abs(ev.x - switcherX)
-                            if (up > dp(64) && up > dx * 1.3f) {
-                                switcherReady = true
-                                root.postDelayed(switcherHold, 220L)
-                            }
-                        }
-                    }
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                        switcherArm = false
-                        switcherReady = false
-                        root.removeCallbacks(switcherHold)
-                    }
-                }
-            }
-        }
-        return super.dispatchTouchEvent(ev)
-    }
-
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         if (::adapter.isInitialized) outState.putBoolean("edit", adapter.editMode)
