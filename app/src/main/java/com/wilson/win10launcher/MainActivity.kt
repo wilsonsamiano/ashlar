@@ -148,7 +148,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
-        if (leave != Leave.TURN && leave != Leave.FEATHER) {
+        if (leave != Leave.TURN && leave != Leave.FEATHER && leave != Leave.SLIDE) {
             val page = page()
             page.animate().cancel()
             page.translationX = 0f
@@ -306,8 +306,9 @@ class MainActivity : AppCompatActivity() {
                 MotionEvent.ACTION_MOVE -> {
                     val dx = e.rawX - downRawX
                     val dy = e.rawY - downRawY
-                    if (dx < -dp(28) && kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.5f) {
+                    if (dx < -dp(12) && kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.2f) {
                         dragging = true
+                        PageTurn.trackSlide(page(), dx.coerceAtMost(0f))
                         return true
                     }
                 }
@@ -319,15 +320,23 @@ class MainActivity : AppCompatActivity() {
             if (!dragging) return
             val w = rv.width.toFloat().coerceAtLeast(1f)
             val dx = (e.rawX - downRawX).coerceAtMost(0f)
+            val page = page()
             when (e.actionMasked) {
+                MotionEvent.ACTION_MOVE -> PageTurn.trackSlide(page, dx)
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     dragging = false
-                    val page = page()
+                    val commit = e.actionMasked == MotionEvent.ACTION_UP &&
+                        dx < -w * 0.18f && leave == Leave.NONE
                     page.animate().cancel()
-                    page.translationX = 0f
-                    if (e.actionMasked == MotionEvent.ACTION_UP && dx < -w * 0.18f && leave == Leave.NONE) {
-                        slideTo(Intent(this@MainActivity, AllAppsActivity::class.java))
+                    if (!commit) {
+                        page.animate().translationX(0f).setDuration(160L).start()
+                        return
                     }
+                    leave = Leave.SLIDE
+                    startActivity(PageTurn.quiet(
+                        Intent(this@MainActivity, AllAppsActivity::class.java).putExtra("tracked", true)
+                    ))
+                    PageTurn.noSystemAnim(this@MainActivity)
                 }
             }
         }

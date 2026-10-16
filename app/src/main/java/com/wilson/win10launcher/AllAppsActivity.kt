@@ -49,13 +49,14 @@ class AllAppsActivity : AppCompatActivity() {
         setContentView(R.layout.activity_all_apps)
         val page = findViewById<View>(android.R.id.content)
         page.setBackgroundColor(prefs.bgColor())
+        window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(prefs.bgColor()))
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 slideClosed = true
                 finish()
             }
         })
-        if (savedInstanceState == null) {
+        if (savedInstanceState == null && !intent.getBooleanExtra("tracked", false)) {
             PageTurn.enterSlide(page, resources.displayMetrics.widthPixels.toFloat())
         }
         pickMode = intent.getBooleanExtra("pick", false)
