@@ -89,6 +89,21 @@ class MainActivity : AppCompatActivity() {
         )
         grid.itemAnimator = null
         grid.overScrollMode = View.OVER_SCROLL_NEVER
+        grid.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrollStateChanged(rv: RecyclerView, newState: Int) {
+                val lm = rv.layoutManager as? TileLayoutManager ?: return
+                if (newState == RecyclerView.SCROLL_STATE_DRAGGING) {
+                    lm.allowBungee = true
+                    lm.cancelSpring()
+                } else {
+                    lm.allowBungee = false
+                    if (lm.hasBungee()) {
+                        rv.stopScroll()
+                        lm.settleBungee()
+                    }
+                }
+            }
+        })
         grid.adapter = adapter
         grid.addOnItemTouchListener(organizeDrag())
         grid.addOnItemTouchListener(swipeAllApps())

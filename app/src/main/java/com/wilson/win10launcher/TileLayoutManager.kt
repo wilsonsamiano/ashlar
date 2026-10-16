@@ -22,6 +22,44 @@ class TileLayoutManager(
     private val slots = ArrayList<Rect>()
     private var scrollOffset = 0
     private var contentHeight = 0
+    /** Pixels the tiles are pulled past the edge. Positive moves them down. */
+    private var bungee = 0
+    private var pull = 0f
+    private var spring: android.animation.ValueAnimator? = null
+    var allowBungee = false
+
+    fun hasBungee() = bungee != 0 || pull != 0f
+
+    fun cancelSpring() {
+        spring?.cancel()
+        spring = null
+    }
+
+    /** Rubber-band back to the edge, with a little overshoot. */
+    fun settleBungee() {
+        if (!hasBungee()) return
+        if (spring?.isRunning == true) return
+        val from = bungee
+        pull = 0f
+        spring = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 480
+            interpolator = android.view.animation.OvershootInterpolator(1.35f)
+            addUpdateListener {
+                val t = it.animatedValue as Float
+                bungee = (from * (1f - t)).toInt()
+                requestLayout()
+            }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    bungee = 0
+                    pull = 0f
+                    spring = null
+                    requestLayout()
+                }
+            })
+            start()
+        }
+    }
 
     override fun generateDefaultLayoutParams(): RecyclerView.LayoutParams {
         return RecyclerView.LayoutParams(
@@ -71,15 +109,53 @@ class TileLayoutManager(
     ): Int {
         if (dy == 0 || itemCount == 0) return 0
         val maxScroll = (contentHeight - height).coerceAtLeast(0)
+        if (allowBungee && (bungee != 0 || pull != 0f)) {
+            spring?.cancel()
+            spring = null
+            pull -= dy
+            val sameSide = (bungee > 0 && pull > 0f) || (bungee < 0 && pull < 0f)
+            if (!sameSide) {
+                offsetChildrenVertical(-bungee)
+                val rest = (-pull).toInt()
+                bungee = 0
+                pull = 0f
+                if (rest != 0) scrollVerticallyBy(rest, recycler, state)
+                return dy
+            }
+            val next = resist(pull)
+            offsetChildrenVertical(next - bungee)
+            bungee = next
+            return dy
+        }
         val travel = when {
             dy > 0 -> dy.coerceAtMost(maxScroll - scrollOffset)
             else -> dy.coerceAtLeast(-scrollOffset)
+        }
+        if (allowBungee && travel != dy) {
+            if (travel != 0) {
+                scrollOffset += travel
+                offsetChildrenVertical(-travel)
+                fill(recycler)
+            }
+            pull = -(dy - travel).toFloat()
+            val next = resist(pull)
+            offsetChildrenVertical(next - bungee)
+            bungee = next
+            return dy
         }
         if (travel == 0) return 0
         scrollOffset += travel
         offsetChildrenVertical(-travel)
         fill(recycler)
         return travel
+    }
+
+    private fun resist(raw: Float): Int {
+        val max = (height / 2.2f).coerceAtLeast(1f)
+        val sign = if (raw < 0f) -1f else 1f
+        val dist = kotlin.math.abs(raw)
+        val eased = max * (1f - 1f / (1f + dist / (max * 0.5f)))
+        return (sign * eased).toInt()
     }
 
     override fun computeVerticalScrollOffset(state: RecyclerView.State) = scrollOffset
@@ -195,7 +271,7 @@ class TileLayoutManager(
             View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY)
         )
         val left = slot.left + lp.leftMargin
-        val t = slot.top - scrollOffset + lp.topMargin
+        val t = slot.top - scrollOffset + lp.topMargin + bungee
         layoutDecorated(child, left, t, left + child.measuredWidth, t + child.measuredHeight)
     }
 }
