@@ -30,6 +30,15 @@ class Prefs(private val appCtx: Context) {
     fun bgColor() = if (darkTheme) 0xFF000000.toInt() else 0xFFFFFFFF.toInt()
     fun fgColor() = if (darkTheme) 0xFFFFFFFF.toInt() else 0xFF000000.toInt()
 
+    /** Dark status icons on a light background, light icons on a dark one. */
+    fun chrome(activity: android.app.Activity) {
+        val light = !darkTheme
+        androidx.core.view.WindowCompat.getInsetsController(activity.window, activity.window.decorView).apply {
+            isAppearanceLightStatusBars = light
+            isAppearanceLightNavigationBars = light
+        }
+    }
+
     /** Keep a copy of the current Start layout so it can be put back later. */
     fun saveLayoutSnapshot() {
         sp.edit().putString("savedTiles", sp.getString("tiles", "[]")).apply()

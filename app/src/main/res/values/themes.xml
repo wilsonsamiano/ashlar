@@ -4,6 +4,9 @@
         <item name="android:windowBackground">@color/wp_black</item>
         <item name="android:statusBarColor">@color/wp_black</item>
         <item name="android:navigationBarColor">@color/wp_black</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
         <item name="android:windowAnimationStyle">@style/Anim.Instant</item>
         <item name="android:windowDisablePreview">true</item>
     </style>
@@ -12,6 +15,9 @@
         <item name="android:windowBackground">@color/wp_white</item>
         <item name="android:statusBarColor">@color/wp_white</item>
         <item name="android:navigationBarColor">@color/wp_white</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
         <item name="android:windowAnimationStyle">@style/Anim.Instant</item>
         <item name="android:windowDisablePreview">true</item>
     </style>

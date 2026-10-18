@@ -62,6 +62,7 @@ class SettingsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         PageTurn.noSystemAnim(this)
         setContentView(R.layout.activity_settings)
+        prefs.chrome(this)
         val page = findViewById<View>(android.R.id.content)
         page.setBackgroundColor(prefs.bgColor())
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {

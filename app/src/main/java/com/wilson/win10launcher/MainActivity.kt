@@ -75,6 +75,7 @@ class MainActivity : AppCompatActivity() {
         setTheme(if (appliedDark) R.style.Theme_Win10_Dark else R.style.Theme_Win10_Light)
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        prefs.chrome(this)
 
         adapter = TileAdapter(this, prefs) { handle(it) }
         grid = findViewById(R.id.tileGrid)

@@ -47,6 +47,7 @@ class AllAppsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         PageTurn.noSystemAnim(this)
         setContentView(R.layout.activity_all_apps)
+        prefs.chrome(this)
         val page = findViewById<View>(android.R.id.content)
         page.setBackgroundColor(prefs.bgColor())
         window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(prefs.bgColor()))
