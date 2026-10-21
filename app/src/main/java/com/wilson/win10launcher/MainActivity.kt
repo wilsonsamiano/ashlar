@@ -156,6 +156,7 @@ class MainActivity : AppCompatActivity() {
             page.translationX = 0f
             page.rotationY = 0f
         }
+        VistaGlass.clearCompositor(this)
         super.onPause()
     }
 
@@ -220,11 +221,18 @@ class MainActivity : AppCompatActivity() {
 
     private fun refresh() {
         findViewById<View>(R.id.root).let { root ->
+            VistaGlass.clearCompositor(this)
             if (prefs.vistaVibe) {
-                VistaGlass.backdrop(this, true)
-                root.setBackgroundColor(Color.TRANSPARENT)
+                val paint = fun(bg: android.graphics.drawable.Drawable) {
+                    if (isDestroyed) return
+                    root.background = bg
+                    window.setBackgroundDrawable(bg.constantState?.newDrawable(resources) ?: bg)
+                    window.statusBarColor = 0xFF071525.toInt()
+                    window.navigationBarColor = 0xFF071525.toInt()
+                }
+                if (root.background == null) paint(VistaGlass.fallback())
+                VistaGlass.frost(this, paint)
             } else {
-                VistaGlass.backdrop(this, false)
                 root.setBackgroundColor(prefs.bgColor())
                 window.statusBarColor = prefs.bgColor()
                 window.navigationBarColor = prefs.bgColor()

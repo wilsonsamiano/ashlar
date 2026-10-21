@@ -63,10 +63,12 @@ class SettingsActivity : AppCompatActivity() {
         PageTurn.noSystemAnim(this)
         setContentView(R.layout.activity_settings)
         prefs.chrome(this)
+        VistaGlass.clearCompositor(this)
         val page = findViewById<View>(android.R.id.content)
         if (prefs.vistaVibe) {
-            VistaGlass.backdrop(this, true)
-            page.background = VistaGlass.sheet(prefs.darkTheme)
+            val glass = VistaGlass.sheet(prefs.darkTheme)
+            page.background = glass
+            window.setBackgroundDrawable(glass.constantState?.newDrawable(resources) ?: glass)
         } else {
             page.setBackgroundColor(prefs.bgColor())
         }
