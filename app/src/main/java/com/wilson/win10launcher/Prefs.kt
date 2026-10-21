@@ -30,9 +30,14 @@ class Prefs(private val appCtx: Context) {
     fun bgColor() = if (darkTheme) 0xFF000000.toInt() else 0xFFFFFFFF.toInt()
     fun fgColor() = if (darkTheme) 0xFFFFFFFF.toInt() else 0xFF000000.toInt()
 
+    /** Vista Vibe: see-through glass tiles. Off keeps the flat Metro tiles. */
+    var vistaVibe: Boolean
+        get() = sp.getBoolean("vistaVibe", false)
+        set(v) { sp.edit().putBoolean("vistaVibe", v).apply() }
+
     /** Dark status icons on a light background, light icons on a dark one. */
     fun chrome(activity: android.app.Activity) {
-        val light = !darkTheme
+        val light = !darkTheme && !vistaVibe
         androidx.core.view.WindowCompat.getInsetsController(activity.window, activity.window.decorView).apply {
             isAppearanceLightStatusBars = light
             isAppearanceLightNavigationBars = light

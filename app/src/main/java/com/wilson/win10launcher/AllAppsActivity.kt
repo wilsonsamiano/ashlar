@@ -49,8 +49,15 @@ class AllAppsActivity : AppCompatActivity() {
         setContentView(R.layout.activity_all_apps)
         prefs.chrome(this)
         val page = findViewById<View>(android.R.id.content)
-        page.setBackgroundColor(prefs.bgColor())
-        window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(prefs.bgColor()))
+        if (prefs.vistaVibe) {
+            VistaGlass.backdrop(this, true)
+            val glass = VistaGlass.sheet(prefs.darkTheme)
+            page.background = glass
+            window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+        } else {
+            page.setBackgroundColor(prefs.bgColor())
+            window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(prefs.bgColor()))
+        }
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 slideClosed = true
@@ -81,7 +88,7 @@ class AllAppsActivity : AppCompatActivity() {
         rv.adapter = adapter
         adapter.submit(buildSections(all, true))
 
-        findViewById<View>(R.id.root).setBackgroundColor(prefs.bgColor())
+        findViewById<View>(R.id.root).setBackgroundColor(if (prefs.vistaVibe) android.graphics.Color.TRANSPARENT else prefs.bgColor())
         val search = findViewById<EditText>(R.id.searchBox)
         search.setTextColor(prefs.fgColor())
         search.setHintTextColor(if (prefs.darkTheme) 0xFF888888.toInt() else 0xFF666666.toInt())
@@ -205,13 +212,23 @@ class AllAppsActivity : AppCompatActivity() {
                 is Row.Header -> {
                     val vh = h as HeaderVH
                     vh.letter.text = r.title
-                    vh.box.setBackgroundColor(prefs.accentColor)
+                    if (prefs.vistaVibe) vh.letter.setShadowLayer(4f, 0f, 1f, 0xAA000000.toInt())
+                    vh.box.background = if (prefs.vistaVibe) {
+                        VistaGlass.tile(prefs.accentColor, 8f * resources.displayMetrics.density, (resources.displayMetrics.density).toInt().coerceAtLeast(1))
+                    } else {
+                        android.graphics.drawable.ColorDrawable(prefs.accentColor)
+                    }
                     vh.itemView.setOnClickListener { if (r.letter != null) onHeaderClick() }
                 }
                 is Row.Item -> {
                     val vh = h as AppVH
                     vh.label.text = r.app.label
                     vh.label.setTextColor(prefs.fgColor())
+                    if (prefs.vistaVibe && prefs.darkTheme) {
+                        vh.label.setShadowLayer(3f, 0f, 1f, 0x88000000.toInt())
+                    } else {
+                        vh.label.setShadowLayer(0f, 0f, 0f, 0)
+                    }
                     if (Tile.isClock(r.app.pkg, r.app.cls)) {
                         vh.icon.setImageResource(android.R.drawable.ic_lock_idle_alarm)
                         vh.icon.imageTintList = ColorStateList.valueOf(prefs.fgColor())

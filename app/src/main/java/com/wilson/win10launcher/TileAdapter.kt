@@ -116,6 +116,7 @@ class TileAdapter(
     var accent: Int = prefs.accentColor
     /** system, circle, squircle, rounded, square, or teardrop. */
     var iconShape: String = prefs.iconShape
+    var vista: Boolean = prefs.vistaVibe
     var editMode: Boolean = false
         set(value) {
             if (field == value) return
@@ -261,9 +262,12 @@ class TileAdapter(
         faceLp.height = ViewGroup.LayoutParams.MATCH_PARENT
         faceLp.gravity = android.view.Gravity.TOP
         h.face.layoutParams = faceLp
+        val inkShadow = if (vista) 0xCC000000.toInt() else 0
+        h.label.setShadowLayer(if (vista) 5f else 0f, 0f, 1f, inkShadow)
+        h.time.setShadowLayer(if (vista) 8f else 0f, 0f, 1f, inkShadow)
 
         if (t == null) {
-            h.face.background = ColorDrawable(darken(accent, 0.75f))
+            h.face.background = if (vista) glass() else ColorDrawable(darken(accent, 0.75f))
             sizeIcon(h.icon, (faceH * 0.42f).toInt().coerceIn(dp(28), dp(72)))
             (h.icon.layoutParams as FrameLayout.LayoutParams).apply {
                 gravity = android.view.Gravity.CENTER
@@ -279,7 +283,7 @@ class TileAdapter(
             h.face.setOnLongClickListener(null)
             return
         }
-        h.face.background = rippleBg(accent)
+        h.face.background = if (vista) glass() else rippleBg(accent)
         h.icon.imageTintList = null
         val iconLp = h.icon.layoutParams as FrameLayout.LayoutParams
         val labelLp = h.label.layoutParams as FrameLayout.LayoutParams
@@ -375,6 +379,8 @@ class TileAdapter(
             }
         }
     }
+
+    private fun glass() = VistaGlass.tile(accent, dp(5).toFloat(), dp(1))
 
     private fun tileIcon(pkg: String, cls: String, size: Int): Drawable? {
         val raw = ctx.packageManager.getActivityIcon(ComponentName(pkg, cls))

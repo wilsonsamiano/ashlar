@@ -64,7 +64,12 @@ class SettingsActivity : AppCompatActivity() {
         setContentView(R.layout.activity_settings)
         prefs.chrome(this)
         val page = findViewById<View>(android.R.id.content)
-        page.setBackgroundColor(prefs.bgColor())
+        if (prefs.vistaVibe) {
+            VistaGlass.backdrop(this, true)
+            page.background = VistaGlass.sheet(prefs.darkTheme)
+        } else {
+            page.setBackgroundColor(prefs.bgColor())
+        }
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 slideClosed = true
@@ -73,8 +78,8 @@ class SettingsActivity : AppCompatActivity() {
         })
         title = "Launcher settings"
 
-        findViewById<View>(R.id.root).setBackgroundColor(prefs.bgColor())
-        for (id in listOf(R.id.accentTitle, R.id.themeTitle, R.id.themeStatus, R.id.iconTitle, R.id.topTitle, R.id.topBlurb, R.id.topCount, R.id.updateTitle, R.id.updateStatus, R.id.supportTitle, R.id.supportBlurb)) {
+        findViewById<View>(R.id.root).setBackgroundColor(if (prefs.vistaVibe) android.graphics.Color.TRANSPARENT else prefs.bgColor())
+        for (id in listOf(R.id.accentTitle, R.id.lookTitle, R.id.lookStatus, R.id.themeTitle, R.id.themeStatus, R.id.iconTitle, R.id.topTitle, R.id.topBlurb, R.id.topCount, R.id.updateTitle, R.id.updateStatus, R.id.supportTitle, R.id.supportBlurb)) {
             findViewById<TextView>(id).setTextColor(prefs.fgColor())
         }
 
@@ -98,6 +103,13 @@ class SettingsActivity : AppCompatActivity() {
         lightBtn.alpha = if (mode == "light") 1f else 0.45f
         sunBtn.alpha = if (mode == "sun") 1f else 0.45f
         findViewById<TextView>(R.id.themeStatus).text = themeStatus()
+
+        val metroBtn = findViewById<Button>(R.id.metroBtn)
+        val vistaBtn = findViewById<Button>(R.id.vistaBtn)
+        metroBtn.setOnClickListener { prefs.vistaVibe = false; recreate() }
+        vistaBtn.setOnClickListener { prefs.vistaVibe = true; recreate() }
+        metroBtn.alpha = if (prefs.vistaVibe) 0.45f else 1f
+        vistaBtn.alpha = if (prefs.vistaVibe) 1f else 0.45f
 
         val iconRow = findViewById<android.widget.LinearLayout>(R.id.iconShapes)
         fun paintShapes() {

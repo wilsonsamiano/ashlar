@@ -26,6 +26,46 @@
             android:nestedScrollingEnabled="false" />
 
         <TextView
+            android:id="@+id/lookTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="28dp"
+            android:fontFamily="sans-serif-light"
+            android:text="Look"
+            android:textSize="22sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/metroBtn"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:text="Metro" />
+
+            <Button
+                android:id="@+id/vistaBtn"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:text="Vista Vibe" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/lookStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:fontFamily="sans-serif-light"
+            android:text="Vista Vibe is see-through glass around the tiles. Metro is the flat Start screen."
+            android:textSize="15sp" />
+
+        <TextView
             android:id="@+id/themeTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

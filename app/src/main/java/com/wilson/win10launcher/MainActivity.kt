@@ -5,6 +5,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.view.MotionEvent
@@ -218,13 +219,37 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refresh() {
-        findViewById<View>(R.id.root).setBackgroundColor(prefs.bgColor())
+        findViewById<View>(R.id.root).let { root ->
+            if (prefs.vistaVibe) {
+                VistaGlass.backdrop(this, true)
+                root.setBackgroundColor(Color.TRANSPARENT)
+            } else {
+                VistaGlass.backdrop(this, false)
+                root.setBackgroundColor(prefs.bgColor())
+                window.statusBarColor = prefs.bgColor()
+                window.navigationBarColor = prefs.bgColor()
+                window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(prefs.bgColor()))
+            }
+        }
+        val dock = findViewById<View>(R.id.dock)
+        val ink = if (prefs.vistaVibe) Color.WHITE else prefs.fgColor()
+        editBtn.setTextColor(ink)
+        findViewById<Button>(R.id.allAppsBtn).setTextColor(ink)
+        findViewById<Button>(R.id.settingsBtn).setTextColor(ink)
+        if (prefs.vistaVibe) {
+            dock.background = VistaGlass.tile(prefs.accentColor, dp(8).toFloat(), dp(1))
+        } else {
+            dock.background = null
+        }
         val nextAccent = prefs.accentColor
         val next = prefs.loadTiles()
         val plates = prefs.iconShape
-        val same = nextAccent == adapter.accent && plates == adapter.iconShape && next == adapter.tiles()
+        val vibe = prefs.vistaVibe
+        val same = nextAccent == adapter.accent && plates == adapter.iconShape &&
+            vibe == adapter.vista && next == adapter.tiles()
         adapter.accent = nextAccent
         adapter.iconShape = plates
+        adapter.vista = vibe
         if (!same) {
             adapter.submit(next)
             grid.requestLayout()
@@ -237,8 +262,13 @@ class MainActivity : AppCompatActivity() {
     private fun applyChrome() {
         val editing = adapter.editMode
         editBanner.visibility = if (editing) View.VISIBLE else View.GONE
-        editBanner.setTextColor(prefs.fgColor())
-        editBanner.setBackgroundColor(if (prefs.darkTheme) 0xCC000000.toInt() else 0xEEFFFFFF.toInt())
+        if (prefs.vistaVibe) {
+            editBanner.setTextColor(Color.WHITE)
+            editBanner.background = VistaGlass.sheet(true)
+        } else {
+            editBanner.setTextColor(prefs.fgColor())
+            editBanner.setBackgroundColor(if (prefs.darkTheme) 0xCC000000.toInt() else 0xEEFFFFFF.toInt())
+        }
         editBtn.text = if (editing) "DONE" else "EDIT"
         val top = if (editing) dp(44) else dp(8)
         grid.setPadding(dp(8), top, dp(8), dp(72))

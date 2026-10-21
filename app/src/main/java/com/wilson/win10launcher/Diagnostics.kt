@@ -75,6 +75,7 @@ object Diagnostics {
             appendLine("timezone ${java.util.TimeZone.getDefault().id}")
             appendLine("defaultHome ${def?.activityInfo?.packageName ?: "none"}")
             appendLine("theme ${prefs.themeMode}")
+            appendLine("look ${if (prefs.vistaVibe) "vista" else "metro"}")
             appendLine("tiles ${tiles.size} small=${sizes[Tile.SMALL] ?: 0} medium=${sizes[Tile.MEDIUM] ?: 0} wide=${sizes[Tile.WIDE] ?: 0}")
             appendLine()
             if (crash != null) {
