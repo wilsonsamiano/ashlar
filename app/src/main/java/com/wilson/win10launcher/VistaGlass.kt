@@ -35,13 +35,8 @@ object VistaGlass {
     private var loading = false
 
     fun tile(accent: Int, radius: Float, stroke: Int): Drawable {
-        val strip = (stroke * 6f).coerceAtLeast(radius.coerceAtMost(8f) + stroke)
-        val frame = GlassEdge(
-            mix(accent, 0.55f, 0xA8),
-            mix(accent, 0.28f, 0x96),
-            radius,
-            strip
-        )
+        val strip = (stroke * 6f).coerceIn(stroke * 4f, stroke * 10f)
+        val frame = GlassEdge(accent, radius.coerceAtLeast(stroke.toFloat()), strip)
         val mask = GradientDrawable().apply {
             cornerRadius = radius
             setColor(Color.WHITE)
@@ -193,10 +188,9 @@ object VistaGlass {
     }
 }
 
-/** Frosted band around the tile. One draw, no extra views, no window blur. */
+/** Glass frame around a flat phone tile. The color stays in the middle. */
 private class GlassEdge(
-    private val top: Int,
-    private val bottom: Int,
+    private val accent: Int,
     private val radius: Float,
     private val strip: Float
 ) : Drawable() {
@@ -209,45 +203,64 @@ private class GlassEdge(
     override fun draw(canvas: Canvas) {
         val b = bounds
         if (b.isEmpty) return
+        val shadow = (strip * 0.45f).coerceAtLeast(2f)
+        val tile = RectF(
+            b.left + shadow * 0.25f,
+            b.top + shadow * 0.15f,
+            b.right - shadow,
+            b.bottom - shadow
+        )
+        if (tile.width() < 4f || tile.height() < 4f) return
+
         fill.alpha = paintAlpha
         edge.alpha = paintAlpha
-        fill.shader = LinearGradient(
-            0f, b.top.toFloat(), 0f, b.bottom.toFloat(),
-            top, bottom, Shader.TileMode.CLAMP
-        )
-        rect.set(b)
+        fill.shader = null
+        fill.color = 0x55000000
+        rect.set(tile.left, tile.top + shadow * 0.55f, tile.right, tile.bottom + shadow * 0.2f)
         canvas.drawRoundRect(rect, radius, radius, fill)
 
-        // Glass strip sitting just inside the tile, not clipped off the edge.
-        val band = strip.coerceAtMost(minOf(b.width(), b.height()) / 3f)
+        // The rim is the glass. Cool, brighter along the top.
+        fill.shader = LinearGradient(
+            tile.left, tile.top, tile.left, tile.bottom,
+            intArrayOf(0xF4FFFFFF.toInt(), 0xC8D5E6F4.toInt(), 0x99778BA3.toInt()),
+            floatArrayOf(0f, 0.42f, 1f),
+            Shader.TileMode.CLAMP
+        )
+        canvas.drawRoundRect(tile, radius, radius, fill)
+
+        val band = strip.coerceAtMost(minOf(tile.width(), tile.height()) * 0.22f)
+        val plateR = (radius * 0.35f).coerceAtLeast(1f)
+        val plate = RectF(tile.left + band, tile.top + band, tile.right - band, tile.bottom - band)
+        if (plate.width() <= 0f || plate.height() <= 0f) return
+
+        fill.shader = LinearGradient(
+            plate.left, plate.top, plate.left, plate.bottom,
+            mix(accent, 0.16f, 0xF4),
+            mix(accent, 0.02f, 0xF7),
+            Shader.TileMode.CLAMP
+        )
+        canvas.drawRoundRect(plate, plateR, plateR, fill)
+
         edge.shader = null
-        edge.strokeWidth = band
-        edge.color = 0x73FFFFFF
-        val mid = band / 2f
-        rect.set(b.left + mid, b.top + mid, b.right - mid, b.bottom - mid)
+        edge.strokeWidth = 1f
+        edge.color = 0x66000000
+        edge.alpha = paintAlpha
+        canvas.drawRoundRect(plate, plateR, plateR, edge)
+
+        edge.strokeWidth = 1.25f
+        edge.color = 0xEEFFFFFF.toInt()
+        edge.alpha = paintAlpha
+        val outer = 0.8f
+        rect.set(tile.left + outer, tile.top + outer, tile.right - outer, tile.bottom - outer)
         canvas.drawRoundRect(rect, radius, radius, edge)
 
-        edge.strokeWidth = 1.5f.coerceAtLeast(band * 0.14f)
-        edge.color = 0xF2FFFFFF.toInt()
-        val outer = edge.strokeWidth
-        rect.set(b.left + outer, b.top + outer, b.right - outer, b.bottom - outer)
-        canvas.drawRoundRect(rect, radius, radius, edge)
-
-        edge.color = 0x59000000
-        val inner = band + edge.strokeWidth
-        val innerR = (radius * 0.6f).coerceAtLeast(0f)
-        rect.set(b.left + inner, b.top + inner, b.right - inner, b.bottom - inner)
-        if (rect.width() > 0f && rect.height() > 0f) {
-            canvas.drawRoundRect(rect, innerR, innerR, edge)
-        }
-
-        // Brighter catch along the top edge, the Aero highlight.
         canvas.save()
-        canvas.clipRect(b.left.toFloat(), b.top.toFloat(), b.right.toFloat(), b.top + band * 1.15f)
-        edge.strokeWidth = band * 0.55f
-        edge.color = 0xE6FFFFFF.toInt()
-        val topInset = edge.strokeWidth
-        rect.set(b.left + topInset, b.top + topInset, b.right - topInset, b.bottom - topInset)
+        canvas.clipRect(tile.left, tile.top, tile.right, tile.top + band * 0.9f)
+        edge.strokeWidth = (band * 0.62f).coerceAtLeast(1.5f)
+        edge.color = 0xD9FFFFFF.toInt()
+        edge.alpha = paintAlpha
+        val topInset = edge.strokeWidth / 2f
+        rect.set(tile.left + topInset, tile.top + topInset, tile.right - topInset, tile.bottom - topInset)
         canvas.drawRoundRect(rect, radius, radius, edge)
         canvas.restore()
     }
@@ -265,4 +278,14 @@ private class GlassEdge(
 
     @Deprecated("Deprecated in Java")
     override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
+
+    private fun mix(color: Int, white: Float, alpha: Int): Int {
+        val keep = 1f - white
+        return Color.argb(
+            alpha,
+            (Color.red(color) * keep + 255f * white).toInt().coerceIn(0, 255),
+            (Color.green(color) * keep + 255f * white).toInt().coerceIn(0, 255),
+            (Color.blue(color) * keep + 255f * white).toInt().coerceIn(0, 255)
+        )
+    }
 }

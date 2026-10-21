@@ -62,7 +62,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:fontFamily="sans-serif-light"
-            android:text="Vista Vibe is see-through glass around the tiles. Metro is the flat Start screen."
+            android:text="Vista Vibe keeps the flat tiles and puts a glass frame around each one. Metro has no frame."
             android:textSize="15sp" />
 
         <TextView

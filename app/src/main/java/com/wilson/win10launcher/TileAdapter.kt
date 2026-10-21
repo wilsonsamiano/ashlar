@@ -319,7 +319,8 @@ class TileAdapter(
                 h.time.setTextSize(TypedValue.COMPLEX_UNIT_PX, faceH * if (small) 0.46f else 0.52f)
             }
             labelLp.gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START
-            labelLp.setMargins(dp(10), 0, dp(8), dp(8))
+            val lip = if (vista) dp(6) else 0
+            labelLp.setMargins(dp(10) + lip, 0, dp(8) + lip, dp(8) + lip)
             h.label.layoutParams = labelLp
             h.label.setPadding(0, 0, 0, 0)
             h.label.textSize = if (small) 11f else 14f
@@ -348,12 +349,13 @@ class TileAdapter(
             .toInt()
             .coerceAtLeast(dp(32))
         iconLp.gravity = android.view.Gravity.CENTER
-        iconLp.bottomMargin = dp(10)
+        iconLp.bottomMargin = dp(10) + if (vista) dp(4) else 0
         iconLp.topMargin = 0
         iconLp.marginStart = 0
         iconLp.marginEnd = 0
         labelLp.gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START
-        labelLp.setMargins(dp(8), 0, dp(8), dp(8))
+        val lip = if (vista) dp(6) else 0
+        labelLp.setMargins(dp(8) + lip, 0, dp(8) + lip, dp(8) + lip)
         h.label.setPadding(0, 0, 0, 0)
         h.label.textSize = if (t.size == Tile.SMALL || t.size == Tile.HALF) 11f else 13f
         sizeIcon(h.icon, iconPx)
