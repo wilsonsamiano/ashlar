@@ -7,6 +7,12 @@ import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ColorFilter
+import android.graphics.LinearGradient
+import android.graphics.Paint
+import android.graphics.PixelFormat
+import android.graphics.RectF
+import android.graphics.Shader
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
@@ -29,18 +35,18 @@ object VistaGlass {
     private var loading = false
 
     fun tile(accent: Int, radius: Float, stroke: Int): Drawable {
-        val plate = GradientDrawable(
-            GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(mix(accent, 0.72f, 0xC4), mix(accent, 0.40f, 0xB0))
-        ).apply {
-            cornerRadius = radius
-            setStroke(stroke.coerceAtLeast(1), 0x99FFFFFF.toInt())
-        }
+        val strip = (stroke * 6f).coerceAtLeast(radius.coerceAtMost(8f) + stroke)
+        val frame = GlassEdge(
+            mix(accent, 0.55f, 0xA8),
+            mix(accent, 0.28f, 0x96),
+            radius,
+            strip
+        )
         val mask = GradientDrawable().apply {
             cornerRadius = radius
             setColor(Color.WHITE)
         }
-        return RippleDrawable(ColorStateList.valueOf(0x33FFFFFF), plate, mask)
+        return RippleDrawable(ColorStateList.valueOf(0x33FFFFFF), frame, mask)
     }
 
     fun sheet(dark: Boolean): Drawable {
@@ -185,4 +191,78 @@ object VistaGlass {
         val b = (Color.blue(accent) * keep + 255f * white).toInt().coerceIn(0, 255)
         return Color.argb(alpha, r, g, b)
     }
+}
+
+/** Frosted band around the tile. One draw, no extra views, no window blur. */
+private class GlassEdge(
+    private val top: Int,
+    private val bottom: Int,
+    private val radius: Float,
+    private val strip: Float
+) : Drawable() {
+
+    private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+    private val rect = RectF()
+    private var paintAlpha = 255
+
+    override fun draw(canvas: Canvas) {
+        val b = bounds
+        if (b.isEmpty) return
+        fill.alpha = paintAlpha
+        edge.alpha = paintAlpha
+        fill.shader = LinearGradient(
+            0f, b.top.toFloat(), 0f, b.bottom.toFloat(),
+            top, bottom, Shader.TileMode.CLAMP
+        )
+        rect.set(b)
+        canvas.drawRoundRect(rect, radius, radius, fill)
+
+        // Glass strip sitting just inside the tile, not clipped off the edge.
+        val band = strip.coerceAtMost(minOf(b.width(), b.height()) / 3f)
+        edge.shader = null
+        edge.strokeWidth = band
+        edge.color = 0x73FFFFFF
+        val mid = band / 2f
+        rect.set(b.left + mid, b.top + mid, b.right - mid, b.bottom - mid)
+        canvas.drawRoundRect(rect, radius, radius, edge)
+
+        edge.strokeWidth = 1.5f.coerceAtLeast(band * 0.14f)
+        edge.color = 0xF2FFFFFF.toInt()
+        val outer = edge.strokeWidth
+        rect.set(b.left + outer, b.top + outer, b.right - outer, b.bottom - outer)
+        canvas.drawRoundRect(rect, radius, radius, edge)
+
+        edge.color = 0x59000000
+        val inner = band + edge.strokeWidth
+        val innerR = (radius * 0.6f).coerceAtLeast(0f)
+        rect.set(b.left + inner, b.top + inner, b.right - inner, b.bottom - inner)
+        if (rect.width() > 0f && rect.height() > 0f) {
+            canvas.drawRoundRect(rect, innerR, innerR, edge)
+        }
+
+        // Brighter catch along the top edge, the Aero highlight.
+        canvas.save()
+        canvas.clipRect(b.left.toFloat(), b.top.toFloat(), b.right.toFloat(), b.top + band * 1.15f)
+        edge.strokeWidth = band * 0.55f
+        edge.color = 0xE6FFFFFF.toInt()
+        val topInset = edge.strokeWidth
+        rect.set(b.left + topInset, b.top + topInset, b.right - topInset, b.bottom - topInset)
+        canvas.drawRoundRect(rect, radius, radius, edge)
+        canvas.restore()
+    }
+
+    override fun setAlpha(alpha: Int) {
+        paintAlpha = alpha
+        invalidateSelf()
+    }
+
+    override fun setColorFilter(colorFilter: ColorFilter?) {
+        fill.colorFilter = colorFilter
+        edge.colorFilter = colorFilter
+        invalidateSelf()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
 }
