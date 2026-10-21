@@ -12,6 +12,8 @@ import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.RectF
+import android.graphics.BitmapShader
+import android.graphics.Matrix
 import android.graphics.Shader
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
@@ -20,6 +22,7 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
 import android.os.Build
 import android.view.Gravity
+import android.view.View
 import android.view.WindowManager
 
 /**
@@ -31,8 +34,18 @@ object VistaGlass {
 
     private const val EDGE = 48
     private var cached: Drawable? = null
+    private var plateBmp: Bitmap? = null
     private var cachedId = Int.MIN_VALUE
     private var loading = false
+
+    /** Blurred wallpaper with the scrim left off, so a tile can lens it. */
+    fun sample(): Bitmap? = plateBmp
+
+    fun ice(accent: Int, dark: Boolean, capsule: Boolean): Drawable = IcePlate(accent, dark, capsule)
+
+    fun bind(drawable: Drawable, view: View) {
+        (drawable as? IcePlate)?.host = view
+    }
 
     fun tile(accent: Int, radius: Float, stroke: Int): Drawable {
         val strip = (stroke * 6f).coerceIn(stroke * 4f, stroke * 10f)
@@ -111,6 +124,7 @@ object VistaGlass {
             val scaled = Bitmap.createScaledBitmap(b, tw, th, true)
             val small = if (scaled === b) b.copy(Bitmap.Config.ARGB_8888, true) else scaled
             blur(small)
+            plateBmp = small.copy(Bitmap.Config.ARGB_8888, false)
             Canvas(small).drawColor(0x55081420)
             return BitmapDrawable(context.resources, small).apply {
                 gravity = Gravity.FILL
@@ -119,6 +133,7 @@ object VistaGlass {
         }
         val small = shrink(src) ?: return fallback()
         blur(small)
+        plateBmp = small.copy(Bitmap.Config.ARGB_8888, false)
         Canvas(small).drawColor(0x55081420)
         return BitmapDrawable(context.resources, small).apply {
             gravity = Gravity.FILL
@@ -288,4 +303,107 @@ private class GlassEdge(
             (Color.blue(color) * keep + 255f * white).toInt().coerceIn(0, 255)
         )
     }
+}
+
+/**
+ * Liquid-glass tile. The wallpaper is painted into the tile, then milked over,
+ * so the window itself stays opaque and nothing blurs the app underneath.
+ */
+private class IcePlate(
+    private val accent: Int,
+    private val dark: Boolean,
+    private val capsule: Boolean
+) : Drawable() {
+
+    var host: View? = null
+    private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+    private val rect = RectF()
+    private var shader: BitmapShader? = null
+    private var shaderBmp: Bitmap? = null
+    private val matrix = Matrix()
+
+    override fun draw(canvas: Canvas) {
+        val b = bounds
+        if (b.isEmpty) return
+        rect.set(b)
+        val rad = if (capsule) {
+            minOf(rect.width(), rect.height()) / 2f
+        } else {
+            minOf(rect.width(), rect.height()) * 0.26f
+        }
+
+        val bmp = VistaGlass.sample()
+        val view = host
+        fill.alpha = 255
+        if (bmp != null && view != null && view.isAttachedToWindow) {
+            val loc = IntArray(2)
+            view.getLocationInWindow(loc)
+            val root = view.rootView
+            val sx = root.width.coerceAtLeast(1) / bmp.width.toFloat()
+            val sy = root.height.coerceAtLeast(1) / bmp.height.toFloat()
+            matrix.setScale(sx, sy)
+            matrix.postTranslate(-loc[0].toFloat(), -loc[1].toFloat())
+            val sh = if (shaderBmp === bmp) shader else null
+            val live = sh ?: BitmapShader(bmp, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).also {
+                shader = it
+                shaderBmp = bmp
+            }
+            live.setLocalMatrix(matrix)
+            fill.shader = live
+            canvas.drawRoundRect(rect, rad, rad, fill)
+        } else {
+            fill.shader = null
+            fill.color = if (dark) 0xFF1C1C1E.toInt() else 0xFFF2F2F7.toInt()
+            canvas.drawRoundRect(rect, rad, rad, fill)
+        }
+
+        fill.shader = null
+        fill.color = Color.argb(
+            if (dark) 0x55 else 0x48,
+            Color.red(accent), Color.green(accent), Color.blue(accent)
+        )
+        canvas.drawRoundRect(rect, rad, rad, fill)
+
+        fill.color = if (dark) 0xA61C1C1E.toInt() else 0xC4FFFFFF.toInt()
+        canvas.drawRoundRect(rect, rad, rad, fill)
+
+        val topH = rect.height() * 0.40f
+        canvas.save()
+        canvas.clipRect(rect.left, rect.top, rect.right, rect.top + topH)
+        fill.shader = LinearGradient(
+            0f, rect.top, 0f, rect.top + topH,
+            0xD6FFFFFF.toInt(), 0x00FFFFFF, Shader.TileMode.CLAMP
+        )
+        canvas.drawRoundRect(rect, rad, rad, fill)
+        canvas.restore()
+
+        val botH = rect.height() * 0.20f
+        canvas.save()
+        canvas.clipRect(rect.left, rect.bottom - botH, rect.right, rect.bottom)
+        fill.shader = LinearGradient(
+            0f, rect.bottom - botH, 0f, rect.bottom,
+            0x00FFFFFF, 0xA6FFFFFF.toInt(), Shader.TileMode.CLAMP
+        )
+        canvas.drawRoundRect(rect, rad, rad, fill)
+        canvas.restore()
+
+        fill.shader = null
+        edge.strokeWidth = 1.6f
+        edge.color = 0xB3000000.toInt()
+        val inset = 0.8f
+        canvas.drawRoundRect(
+            rect.left + inset, rect.top + inset, rect.right - inset, rect.bottom - inset,
+            rad, rad, edge
+        )
+    }
+
+    override fun setAlpha(alpha: Int) {}
+
+    override fun setColorFilter(colorFilter: ColorFilter?) {
+        fill.colorFilter = colorFilter
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
 }

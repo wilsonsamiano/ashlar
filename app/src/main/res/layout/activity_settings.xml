@@ -53,7 +53,15 @@
                 android:layout_height="48dp"
                 android:layout_marginStart="8dp"
                 android:layout_weight="1"
-                android:text="Vista Vibe" />
+                android:text="Vista" />
+
+            <Button
+                android:id="@+id/iceBtn"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:text="Ice" />
         </LinearLayout>
 
         <TextView
@@ -62,7 +70,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:fontFamily="sans-serif-light"
-            android:text="Vista Vibe keeps the flat tiles and puts a glass frame around each one. Metro has no frame."
+            android:text="Metro is flat. Vista Vibe adds a glass frame. Ice is a milky liquid-glass tile."
             android:textSize="15sp" />
 
         <TextView

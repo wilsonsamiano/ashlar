@@ -102,7 +102,7 @@ data class Tile(
  */
 class TileAdapter(
     private val ctx: Context,
-    prefs: Prefs,
+    private val prefs: Prefs,
     private val onAction: (Action) -> Unit
 ) : RecyclerView.Adapter<TileAdapter.VH>() {
 
@@ -117,6 +117,7 @@ class TileAdapter(
     /** system, circle, squircle, rounded, square, or teardrop. */
     var iconShape: String = prefs.iconShape
     var vista: Boolean = prefs.vistaVibe
+    var ice: Boolean = prefs.ice
     var editMode: Boolean = false
         set(value) {
             if (field == value) return
@@ -262,19 +263,23 @@ class TileAdapter(
         faceLp.height = ViewGroup.LayoutParams.MATCH_PARENT
         faceLp.gravity = android.view.Gravity.TOP
         h.face.layoutParams = faceLp
-        val inkShadow = if (vista) 0xCC000000.toInt() else 0
-        h.label.setShadowLayer(if (vista) 5f else 0f, 0f, 1f, inkShadow)
-        h.time.setShadowLayer(if (vista) 8f else 0f, 0f, 1f, inkShadow)
+        val inkShadow = if (vista || ice) 0xCC000000.toInt() else 0
+        val onLightGlass = ice && !prefs.darkTheme
+        val ink = if (onLightGlass) 0xFF1C1C1E.toInt() else Color.WHITE
+        h.label.setTextColor(ink)
+        h.time.setTextColor(ink)
+        h.label.setShadowLayer(if ((vista || ice) && !onLightGlass) 5f else 0f, 0f, 1f, inkShadow)
+        h.time.setShadowLayer(if ((vista || ice) && !onLightGlass) 8f else 0f, 0f, 1f, inkShadow)
 
         if (t == null) {
-            h.face.background = if (vista) glass() else ColorDrawable(darken(accent, 0.75f))
+            h.face.background = face(h.face)
             sizeIcon(h.icon, (faceH * 0.42f).toInt().coerceIn(dp(28), dp(72)))
             (h.icon.layoutParams as FrameLayout.LayoutParams).apply {
                 gravity = android.view.Gravity.CENTER
                 marginStart = 0
             }
             h.icon.setImageResource(android.R.drawable.ic_input_add)
-            h.icon.imageTintList = ColorStateList.valueOf(Color.WHITE)
+            h.icon.imageTintList = ColorStateList.valueOf(ink)
             h.icon.visibility = View.VISIBLE
             h.time.visibility = View.GONE
             h.label.text = ""
@@ -283,7 +288,7 @@ class TileAdapter(
             h.face.setOnLongClickListener(null)
             return
         }
-        h.face.background = if (vista) glass() else rippleBg(accent)
+        h.face.background = face(h.face)
         h.icon.imageTintList = null
         val iconLp = h.icon.layoutParams as FrameLayout.LayoutParams
         val labelLp = h.label.layoutParams as FrameLayout.LayoutParams
@@ -383,6 +388,14 @@ class TileAdapter(
     }
 
     private fun glass() = VistaGlass.tile(accent, dp(5).toFloat(), dp(1))
+
+    private fun face(view: View): Drawable {
+        return when {
+            ice -> VistaGlass.ice(accent, prefs.darkTheme, false).also { VistaGlass.bind(it, view) }
+            vista -> glass()
+            else -> rippleBg(accent)
+        }
+    }
 
     private fun tileIcon(pkg: String, cls: String, size: Int): Drawable? {
         val raw = ctx.packageManager.getActivityIcon(ComponentName(pkg, cls))

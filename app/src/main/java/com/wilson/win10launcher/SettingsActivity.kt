@@ -65,7 +65,7 @@ class SettingsActivity : AppCompatActivity() {
         prefs.chrome(this)
         VistaGlass.clearCompositor(this)
         val page = findViewById<View>(android.R.id.content)
-        if (prefs.vistaVibe) {
+        if (prefs.glassHome) {
             val glass = VistaGlass.sheet(prefs.darkTheme)
             page.background = glass
             window.setBackgroundDrawable(glass.constantState?.newDrawable(resources) ?: glass)
@@ -80,7 +80,7 @@ class SettingsActivity : AppCompatActivity() {
         })
         title = "Launcher settings"
 
-        findViewById<View>(R.id.root).setBackgroundColor(if (prefs.vistaVibe) android.graphics.Color.TRANSPARENT else prefs.bgColor())
+        findViewById<View>(R.id.root).setBackgroundColor(if (prefs.glassHome) android.graphics.Color.TRANSPARENT else prefs.bgColor())
         for (id in listOf(R.id.accentTitle, R.id.lookTitle, R.id.lookStatus, R.id.themeTitle, R.id.themeStatus, R.id.iconTitle, R.id.topTitle, R.id.topBlurb, R.id.topCount, R.id.updateTitle, R.id.updateStatus, R.id.supportTitle, R.id.supportBlurb)) {
             findViewById<TextView>(id).setTextColor(prefs.fgColor())
         }
@@ -108,10 +108,19 @@ class SettingsActivity : AppCompatActivity() {
 
         val metroBtn = findViewById<Button>(R.id.metroBtn)
         val vistaBtn = findViewById<Button>(R.id.vistaBtn)
-        metroBtn.setOnClickListener { prefs.vistaVibe = false; recreate() }
-        vistaBtn.setOnClickListener { prefs.vistaVibe = true; recreate() }
-        metroBtn.alpha = if (prefs.vistaVibe) 0.45f else 1f
-        vistaBtn.alpha = if (prefs.vistaVibe) 1f else 0.45f
+        val iceBtn = findViewById<Button>(R.id.iceBtn)
+        metroBtn.setOnClickListener { prefs.look = "metro"; recreate() }
+        vistaBtn.setOnClickListener { prefs.look = "vista"; recreate() }
+        iceBtn.setOnClickListener { prefs.look = "ice"; recreate() }
+        val look = prefs.look
+        metroBtn.alpha = if (look == "metro") 1f else 0.45f
+        vistaBtn.alpha = if (look == "vista") 1f else 0.45f
+        iceBtn.alpha = if (look == "ice") 1f else 0.45f
+        findViewById<TextView>(R.id.lookStatus).text = when (look) {
+            "vista" -> "Vista Vibe keeps the flat tiles and puts a glass frame around each one."
+            "ice" -> "Ice lenses the wallpaper through a milky tile, with a dark edge and light along the top and bottom."
+            else -> "Metro is the flat Start screen."
+        }
 
         val iconRow = findViewById<android.widget.LinearLayout>(R.id.iconShapes)
         fun paintShapes() {
