@@ -118,7 +118,7 @@ class SettingsActivity : AppCompatActivity() {
         iceBtn.alpha = if (look == "ice") 1f else 0.45f
         findViewById<TextView>(R.id.lookStatus).text = when (look) {
             "vista" -> "Vista Vibe keeps the flat tiles and puts a glass frame around each one."
-            "ice" -> "Ice lenses the wallpaper through a milky tile, with a dark edge and light along the top and bottom."
+            "ice" -> "Ice is pale see-through glass. The wallpaper shows through, with a bright shine across the top."
             else -> "Metro is the flat Start screen."
         }
 

@@ -11,6 +11,7 @@ import android.graphics.ColorFilter
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.PixelFormat
+import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.BitmapShader
 import android.graphics.Matrix
@@ -387,32 +388,35 @@ private class IcePlate(
             canvas.drawRoundRect(rect, rad, rad, fill)
         }
 
-        // Neutral veil. The accent is only a hint, so the tile stays glass.
+        // Pale lens. Dark mode must not turn this into a dark slab.
         fill.shader = null
-        fill.color = Color.argb(0x28, Color.red(accent), Color.green(accent), Color.blue(accent))
+        fill.color = Color.argb(0x24, Color.red(accent), Color.green(accent), Color.blue(accent))
         canvas.drawRoundRect(rect, rad, rad, fill)
-        fill.color = if (dark) 0x731C1C1E else 0x73FFFFFF
+        fill.color = if (dark) 0xA8F4F7FB.toInt() else 0xB8FFFFFF.toInt()
         canvas.drawRoundRect(rect, rad, rad, fill)
 
-        val lip = 7f.coerceAtMost(rect.height() * 0.16f)
+        fill.shader = RadialGradient(
+            rect.left + rect.width() * 0.32f,
+            rect.top + rect.height() * 0.18f,
+            rect.width().coerceAtLeast(rect.height()) * 0.72f,
+            intArrayOf(0xF2FFFFFF.toInt(), 0x66FFFFFF, 0x00FFFFFF),
+            floatArrayOf(0f, 0.28f, 1f),
+            Shader.TileMode.CLAMP
+        )
+        canvas.drawRoundRect(rect, rad, rad, fill)
+
+        val lip = 8f.coerceAtMost(rect.height() * 0.18f)
         canvas.save()
-        canvas.clipRect(rect.left, rect.top, rect.right, rect.top + lip)
-        edge.strokeWidth = 2.4f
-        edge.color = 0xE6FFFFFF.toInt()
+        canvas.clipRect(rect.left, rect.bottom - lip, rect.right, rect.bottom)
+        edge.strokeWidth = 1.4f
+        edge.color = 0x55FFFFFF
         canvas.drawRoundRect(rect, rad, rad, edge)
         canvas.restore()
 
-        canvas.save()
-        canvas.clipRect(rect.left, rect.bottom - lip * 0.7f, rect.right, rect.bottom)
-        edge.strokeWidth = 1.6f
-        edge.color = 0x80FFFFFF.toInt()
-        canvas.drawRoundRect(rect, rad, rad, edge)
-        canvas.restore()
-
-        edge.strokeWidth = 1.25f
-        edge.color = 0x8C000000.toInt()
+        edge.strokeWidth = 1.5f
+        edge.color = 0xEEFFFFFF.toInt()
         canvas.drawRoundRect(
-            rect.left + 0.6f, rect.top + 0.6f, rect.right - 0.6f, rect.bottom - 0.6f,
+            rect.left + 0.8f, rect.top + 0.8f, rect.right - 0.8f, rect.bottom - 0.8f,
             rad, rad, edge
         )
     }

@@ -265,12 +265,11 @@ class TileAdapter(
         h.face.clipChildren = true
         if (ice) VistaGlass.clip(h.face, false) else VistaGlass.unclip(h.face)
         val inkShadow = if (vista || ice) 0xCC000000.toInt() else 0
-        val onLightGlass = ice && !prefs.darkTheme
-        val ink = if (onLightGlass) 0xFF1C1C1E.toInt() else Color.WHITE
+        val ink = Color.WHITE
         h.label.setTextColor(ink)
         h.time.setTextColor(ink)
-        h.label.setShadowLayer(if ((vista || ice) && !onLightGlass) 5f else 0f, 0f, 1f, inkShadow)
-        h.time.setShadowLayer(if ((vista || ice) && !onLightGlass) 8f else 0f, 0f, 1f, inkShadow)
+        h.label.setShadowLayer(if (vista || ice) 5f else 0f, 0f, 1f, inkShadow)
+        h.time.setShadowLayer(if (vista || ice) 8f else 0f, 0f, 1f, inkShadow)
 
         if (t == null) {
             h.face.background = face(h.face)

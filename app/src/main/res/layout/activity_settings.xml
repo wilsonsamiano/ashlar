@@ -52,8 +52,10 @@
                 android:layout_width="0dp"
                 android:layout_height="48dp"
                 android:layout_marginStart="8dp"
-                android:layout_weight="1"
-                android:text="Vista" />
+                android:layout_weight="1.4"
+                android:text="Vista Vibe"
+                android:textAllCaps="false"
+                android:textSize="13sp" />
 
             <Button
                 android:id="@+id/iceBtn"

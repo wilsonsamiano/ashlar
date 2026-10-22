@@ -212,9 +212,8 @@ class AllAppsActivity : AppCompatActivity() {
                 is Row.Header -> {
                     val vh = h as HeaderVH
                     vh.letter.text = r.title
-                    val onLightGlass = prefs.ice && !prefs.darkTheme
-                    vh.letter.setTextColor(if (onLightGlass) 0xFF1C1C1E.toInt() else android.graphics.Color.WHITE)
-                    if (prefs.vistaVibe || (prefs.ice && !onLightGlass)) {
+                    vh.letter.setTextColor(android.graphics.Color.WHITE)
+                    if (prefs.vistaVibe || prefs.ice) {
                         vh.letter.setShadowLayer(4f, 0f, 1f, 0xAA000000.toInt())
                     } else {
                         vh.letter.setShadowLayer(0f, 0f, 0f, 0)

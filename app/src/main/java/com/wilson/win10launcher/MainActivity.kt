@@ -241,11 +241,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         val dock = findViewById<View>(R.id.dock)
-        val ink = when {
-            prefs.ice && !prefs.darkTheme -> 0xFF1C1C1E.toInt()
-            prefs.glassHome -> Color.WHITE
-            else -> prefs.fgColor()
-        }
+        val ink = if (prefs.glassHome) Color.WHITE else prefs.fgColor()
         editBtn.setTextColor(ink)
         findViewById<Button>(R.id.allAppsBtn).setTextColor(ink)
         findViewById<Button>(R.id.settingsBtn).setTextColor(ink)
