@@ -250,11 +250,20 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.allAppsBtn).setTextColor(ink)
         findViewById<Button>(R.id.settingsBtn).setTextColor(ink)
         when (prefs.look) {
-            "vista" -> dock.background = VistaGlass.tile(prefs.accentColor, dp(8).toFloat(), dp(1))
-            "ice" -> dock.background = VistaGlass.ice(prefs.accentColor, prefs.darkTheme, true).also {
-                VistaGlass.bind(it, dock)
+            "vista" -> {
+                dock.background = VistaGlass.tile(prefs.accentColor, dp(8).toFloat(), dp(1))
+                VistaGlass.unclip(dock)
             }
-            else -> dock.background = null
+            "ice" -> {
+                dock.background = VistaGlass.ice(prefs.accentColor, prefs.darkTheme, true).also {
+                    VistaGlass.bind(it, dock)
+                }
+                VistaGlass.clip(dock, true)
+            }
+            else -> {
+                dock.background = null
+                VistaGlass.unclip(dock)
+            }
         }
         val nextAccent = prefs.accentColor
         val next = prefs.loadTiles()

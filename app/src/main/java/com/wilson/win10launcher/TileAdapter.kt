@@ -262,7 +262,8 @@ class TileAdapter(
         faceLp.width = ViewGroup.LayoutParams.MATCH_PARENT
         faceLp.height = ViewGroup.LayoutParams.MATCH_PARENT
         faceLp.gravity = android.view.Gravity.TOP
-        h.face.layoutParams = faceLp
+        h.face.clipChildren = true
+        if (ice) VistaGlass.clip(h.face, false) else VistaGlass.unclip(h.face)
         val inkShadow = if (vista || ice) 0xCC000000.toInt() else 0
         val onLightGlass = ice && !prefs.darkTheme
         val ink = if (onLightGlass) 0xFF1C1C1E.toInt() else Color.WHITE
@@ -300,6 +301,7 @@ class TileAdapter(
             val wide = t.size == Tile.WIDE
             val timeLp = h.time.layoutParams as FrameLayout.LayoutParams
             h.time.maxLines = 1
+            h.time.ellipsize = android.text.TextUtils.TruncateAt.END
             h.time.gravity = android.view.Gravity.CENTER
             if (wide) {
                 // Grow the time until it fills the wide tile, leaving a strip for the date.
@@ -324,7 +326,7 @@ class TileAdapter(
                 h.time.setTextSize(TypedValue.COMPLEX_UNIT_PX, faceH * if (small) 0.46f else 0.52f)
             }
             labelLp.gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START
-            val lip = if (vista) dp(6) else 0
+            val lip = if (vista) dp(6) else if (ice) dp(12) else 0
             labelLp.setMargins(dp(10) + lip, 0, dp(8) + lip, dp(8) + lip)
             h.label.layoutParams = labelLp
             h.label.setPadding(0, 0, 0, 0)
@@ -359,7 +361,7 @@ class TileAdapter(
         iconLp.marginStart = 0
         iconLp.marginEnd = 0
         labelLp.gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START
-        val lip = if (vista) dp(6) else 0
+        val lip = if (vista) dp(6) else if (ice) dp(12) else 0
         labelLp.setMargins(dp(8) + lip, 0, dp(8) + lip, dp(8) + lip)
         h.label.setPadding(0, 0, 0, 0)
         h.label.textSize = if (t.size == Tile.SMALL || t.size == Tile.HALF) 11f else 13f

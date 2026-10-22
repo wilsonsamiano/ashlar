@@ -22,7 +22,9 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
 import android.os.Build
 import android.view.Gravity
+import android.graphics.Outline
 import android.view.View
+import android.view.ViewOutlineProvider
 import android.view.WindowManager
 
 /**
@@ -32,7 +34,7 @@ import android.view.WindowManager
  */
 object VistaGlass {
 
-    private const val EDGE = 48
+    private const val EDGE = 96
     private var cached: Drawable? = null
     private var plateBmp: Bitmap? = null
     private var cachedId = Int.MIN_VALUE
@@ -45,6 +47,26 @@ object VistaGlass {
 
     fun bind(drawable: Drawable, view: View) {
         (drawable as? IcePlate)?.host = view
+    }
+
+    /** Keep labels and icons inside the same rounded glass the tile paints. */
+    fun clip(view: View, capsule: Boolean) {
+        view.clipToOutline = true
+        view.outlineProvider = object : ViewOutlineProvider() {
+            override fun getOutline(v: View, outline: Outline) {
+                val w = v.width
+                val h = v.height
+                if (w <= 0 || h <= 0) return
+                val rad = if (capsule) minOf(w, h) / 2f else minOf(w, h) * 0.22f
+                outline.setRoundRect(0, 0, w, h, rad)
+            }
+        }
+        view.invalidateOutline()
+    }
+
+    fun unclip(view: View) {
+        if (!view.clipToOutline) return
+        view.clipToOutline = false
     }
 
     fun tile(accent: Int, radius: Float, stroke: Int): Drawable {
@@ -330,8 +352,15 @@ private class IcePlate(
         val rad = if (capsule) {
             minOf(rect.width(), rect.height()) / 2f
         } else {
-            minOf(rect.width(), rect.height()) * 0.26f
+            minOf(rect.width(), rect.height()) * 0.22f
         }
+
+        fill.shader = null
+        fill.color = 0x44000000
+        canvas.drawRoundRect(
+            rect.left, rect.top + 3f, rect.right, rect.bottom + 2f,
+            rad, rad, fill
+        )
 
         val bmp = VistaGlass.sample()
         val view = host
@@ -358,42 +387,32 @@ private class IcePlate(
             canvas.drawRoundRect(rect, rad, rad, fill)
         }
 
+        // Neutral veil. The accent is only a hint, so the tile stays glass.
         fill.shader = null
-        fill.color = Color.argb(
-            if (dark) 0x55 else 0x48,
-            Color.red(accent), Color.green(accent), Color.blue(accent)
-        )
+        fill.color = Color.argb(0x28, Color.red(accent), Color.green(accent), Color.blue(accent))
+        canvas.drawRoundRect(rect, rad, rad, fill)
+        fill.color = if (dark) 0x731C1C1E else 0x73FFFFFF
         canvas.drawRoundRect(rect, rad, rad, fill)
 
-        fill.color = if (dark) 0xA61C1C1E.toInt() else 0xC4FFFFFF.toInt()
-        canvas.drawRoundRect(rect, rad, rad, fill)
-
-        val topH = rect.height() * 0.40f
+        val lip = 7f.coerceAtMost(rect.height() * 0.16f)
         canvas.save()
-        canvas.clipRect(rect.left, rect.top, rect.right, rect.top + topH)
-        fill.shader = LinearGradient(
-            0f, rect.top, 0f, rect.top + topH,
-            0xD6FFFFFF.toInt(), 0x00FFFFFF, Shader.TileMode.CLAMP
-        )
-        canvas.drawRoundRect(rect, rad, rad, fill)
+        canvas.clipRect(rect.left, rect.top, rect.right, rect.top + lip)
+        edge.strokeWidth = 2.4f
+        edge.color = 0xE6FFFFFF.toInt()
+        canvas.drawRoundRect(rect, rad, rad, edge)
         canvas.restore()
 
-        val botH = rect.height() * 0.20f
         canvas.save()
-        canvas.clipRect(rect.left, rect.bottom - botH, rect.right, rect.bottom)
-        fill.shader = LinearGradient(
-            0f, rect.bottom - botH, 0f, rect.bottom,
-            0x00FFFFFF, 0xA6FFFFFF.toInt(), Shader.TileMode.CLAMP
-        )
-        canvas.drawRoundRect(rect, rad, rad, fill)
-        canvas.restore()
-
-        fill.shader = null
+        canvas.clipRect(rect.left, rect.bottom - lip * 0.7f, rect.right, rect.bottom)
         edge.strokeWidth = 1.6f
-        edge.color = 0xB3000000.toInt()
-        val inset = 0.8f
+        edge.color = 0x80FFFFFF.toInt()
+        canvas.drawRoundRect(rect, rad, rad, edge)
+        canvas.restore()
+
+        edge.strokeWidth = 1.25f
+        edge.color = 0x8C000000.toInt()
         canvas.drawRoundRect(
-            rect.left + inset, rect.top + inset, rect.right - inset, rect.bottom - inset,
+            rect.left + 0.6f, rect.top + 0.6f, rect.right - 0.6f, rect.bottom - 0.6f,
             rad, rad, edge
         )
     }
