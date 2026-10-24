@@ -3,4 +3,5 @@
     <color name="wp_black">#FF000000</color>
     <color name="wp_white">#FFFFFFFF</color>
     <color name="wp_cobalt">#FF0078D7</color>
+    <color name="ashlar_bg">#FF243044</color>
 </resources>

@@ -43,7 +43,7 @@ object Updater {
         background {
             val result = runCatching {
                 val dir = File(app.cacheDir, "updates").apply { mkdirs() }
-                val out = File(dir, "Win10Launcher-update.apk")
+                val out = File(dir, "Ashlar-update.apk")
                 if (out.exists()) out.delete()
                 val conn = open(url)
                 try {
@@ -127,7 +127,9 @@ object Updater {
             if (!name.endsWith(".apk", ignoreCase = true)) continue
             val url = asset.optString("browser_download_url")
             if (url.isBlank()) continue
-            if (name.equals("Win10Launcher.apk", ignoreCase = true)) generic = url
+            if (name.equals("Ashlar.apk", ignoreCase = true) ||
+                name.equals("Win10Launcher.apk", ignoreCase = true)
+            ) generic = url
             else versioned = url
         }
         return versioned ?: generic
@@ -138,7 +140,7 @@ object Updater {
         conn.instanceFollowRedirects = true
         conn.connectTimeout = 15000
         conn.readTimeout = 60000
-        conn.setRequestProperty("User-Agent", "Win10Launcher")
+        conn.setRequestProperty("User-Agent", "Ashlar")
         conn.setRequestProperty("Accept", "application/vnd.github+json")
         return conn
     }

@@ -1,0 +1,13 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Dressed stone, running bond. Kept inside the adaptive safe zone. -->
+    <path android:fillColor="#F4EFE6" android:pathData="M26,26h34v28h-34z" />
+    <path android:fillColor="#CDBEAB" android:pathData="M64,26h18v28h-18z" />
+    <path android:fillColor="#B6A68F" android:pathData="M26,58h16v24h-16z" />
+    <path android:fillColor="#E7DCCE" android:pathData="M46,58h36v24h-36z" />
+    <path android:fillColor="#59FFFFFF" android:pathData="M26,26h34v2h-34zM64,26h18v2h-18zM26,58h16v2h-16zM46,58h36v2h-36z" />
+    <path android:fillColor="#33000000" android:pathData="M26,52h34v2h-34zM64,52h18v2h-18zM26,80h16v2h-16zM46,80h36v2h-36z" />
+</vector>

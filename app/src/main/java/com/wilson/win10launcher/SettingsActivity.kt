@@ -78,7 +78,7 @@ class SettingsActivity : AppCompatActivity() {
                 finish()
             }
         })
-        title = "Launcher settings"
+        title = "Ashlar"
 
         findViewById<View>(R.id.root).setBackgroundColor(if (prefs.glassHome) android.graphics.Color.TRANSPARENT else prefs.bgColor())
         for (id in listOf(R.id.accentTitle, R.id.lookTitle, R.id.lookStatus, R.id.themeTitle, R.id.themeStatus, R.id.iconTitle, R.id.topTitle, R.id.topBlurb, R.id.topCount, R.id.updateTitle, R.id.updateStatus, R.id.supportTitle, R.id.supportBlurb)) {
@@ -239,7 +239,7 @@ class SettingsActivity : AppCompatActivity() {
     private fun sendReport() {
         val body = Diagnostics.report(this)
         val email = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:${Diagnostics.REPORT_EMAIL}")).apply {
-            putExtra(Intent.EXTRA_SUBJECT, "Win10 Launcher report")
+            putExtra(Intent.EXTRA_SUBJECT, "Ashlar report")
             putExtra(Intent.EXTRA_TEXT, body)
         }
         try {
@@ -251,14 +251,14 @@ class SettingsActivity : AppCompatActivity() {
         val share = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_EMAIL, arrayOf(Diagnostics.REPORT_EMAIL))
-            putExtra(Intent.EXTRA_SUBJECT, "Win10 Launcher report")
+            putExtra(Intent.EXTRA_SUBJECT, "Ashlar report")
             putExtra(Intent.EXTRA_TEXT, body)
         }
         try {
             startActivity(Intent.createChooser(share, "Send report"))
         } catch (e: Exception) {
             val clip = getSystemService(ClipboardManager::class.java)
-            clip.setPrimaryClip(ClipData.newPlainText("Win10 report", body))
+            clip.setPrimaryClip(ClipData.newPlainText("Ashlar report", body))
             Toast.makeText(this, "Report copied. Paste it in an email to ${Diagnostics.REPORT_EMAIL}", Toast.LENGTH_LONG).show()
         }
     }
@@ -338,7 +338,7 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun downloadUpdate(button: Button, status: TextView, remote: Updater.Remote) {
         if (!Updater.canInstall(this)) {
-            status.text = "Allow Win10 Launcher to install updates, then tap Download again."
+            status.text = "Allow Ashlar to install updates, then tap Download again."
             Updater.askInstallPermission(this)
             return
         }

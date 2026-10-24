@@ -60,7 +60,7 @@ object Diagnostics {
         val crash = sp.getString("lastCrash", null)
         val notes = sp.getString("notes", null)
         return buildString {
-            appendLine("Win10 Launcher report")
+            appendLine("Ashlar report")
             appendLine("version ${info.versionName} ($code)")
             appendLine("package ${ctx.packageName}")
             appendLine("android ${Build.VERSION.RELEASE} sdk ${Build.VERSION.SDK_INT}")
