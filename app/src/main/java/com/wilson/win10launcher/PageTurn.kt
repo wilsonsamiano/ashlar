@@ -181,27 +181,12 @@ object PageTurn {
      * [then] runs when the last tile has finished turning.
      */
     fun featherOut(grid: RecyclerView, tapped: View, then: () -> Unit) {
-        val faces = facesOf(grid)
-        if (faces.isEmpty()) {
-            then()
-            return
-        }
+        val page = sheetOf(grid)
         cancelMotion()
-        val loc = IntArray(2)
-        tapped.getLocationOnScreen(loc)
-        val ox = loc[0] + tapped.width / 2f
-        val oy = loc[1] + tapped.height / 2f
-        for (face in faces) {
-            face.animate().cancel()
-            face.rotationX = 0f
-            face.rotationY = 0f
-            face.scaleX = 1f
-            face.scaleY = 1f
-            if (face.layerType != View.LAYER_TYPE_HARDWARE) {
-                face.setLayerType(View.LAYER_TYPE_HARDWARE, null)
-            }
+        for (face in facesOf(grid)) {
+            if (face !== tapped) releaseFace(face)
         }
-        unclip(grid)
+        unclip(page)
         tapped.animate().cancel()
         tapped.animate()
             .scaleX(0.9f)
@@ -211,53 +196,55 @@ object PageTurn {
             .setInterpolator(DECEL)
             .start()
         later(PUSH_MS) {
-            if (!grid.isAttachedToWindow) {
+            if (!page.isAttachedToWindow) {
+                unlock(page)
+                freeze(grid, false)
                 then()
                 return@later
             }
-            val hinge = pageHinge(grid)
-            val tiles = ArrayList<TileSpin>(faces.size)
-            for (face in facesOf(grid)) {
-                face.animate().cancel()
-                face.rotationX = 0f
-                face.rotationY = 0f
-                face.scaleX = 1f
-                face.scaleY = 1f
-                hingeFace(face, hinge)
-                tiles.add(TileSpin(face, featherDelay(face, ox, oy, face === tapped, true)))
+            // One texture for the whole page. Per-tile layers clip at the
+            // bottom of the screen and tear when the taskbar resizes the window.
+            lock(page)
+            freeze(grid, true)
+            hinge(page)
+            page.translationX = 0f
+            page.rotationY = 0f
+            spin(page, OPEN, FEATHER_OUT, easeOut = false, hold = true) {
+                freeze(grid, false)
+                then()
             }
-            playWave(tiles, 0f, OPEN, FEATHER_OUT, easeOut = false, end = then)
         }
     }
 
     fun featherReturn(grid: RecyclerView, ox: Float, oy: Float) {
-        onPreDraw(grid) {
+        val page = sheetOf(grid)
+        onPreDraw(page) {
             cancelMotion()
-            unclip(grid)
-            val hinge = pageHinge(grid)
-            val faces = facesOf(grid)
-            val tiles = ArrayList<TileSpin>(faces.size)
-            for (face in faces) {
-                face.animate().cancel()
-                face.rotationX = 0f
-                face.rotationY = 0f
-                face.scaleX = 1f
-                face.scaleY = 1f
-                hingeFace(face, hinge)
-                face.rotationY = OPEN
-                tiles.add(TileSpin(face, featherDelay(face, ox, oy, origin = false, leaving = false)))
-            }
-            playWave(tiles, OPEN, 0f, FEATHER_IN, easeOut = true) {
-                for (face in faces) releaseFace(face)
+            for (face in facesOf(grid)) releaseFace(face)
+            unclip(page)
+            lock(page)
+            freeze(grid, true)
+            hinge(page)
+            page.translationX = 0f
+            page.rotationY = OPEN
+            page.post {
+                spin(page, 0f, FEATHER_IN, easeOut = true, hold = false) {
+                    freeze(grid, false)
+                    unlock(page)
+                }
             }
         }
     }
 
     fun featherReset(grid: RecyclerView) {
+        val page = sheetOf(grid)
         val extra = waveFaces
         cancelMotion()
         for (face in extra) releaseFace(face)
         for (face in facesOf(grid)) releaseFace(face)
+        release(page)
+        unlock(page)
+        freeze(grid, false)
     }
 
     fun slideAwayRight(page: View, then: () -> Unit) {
@@ -274,6 +261,37 @@ object PageTurn {
         page.scaleX = 1f
         page.scaleY = 1f
         page.translationX = x
+    }
+
+    /** The page that owns the tiles, so the fold is one sheet instead of many layers. */
+    private fun sheetOf(grid: RecyclerView): View {
+        var v: View = grid
+        while (true) {
+            if (v.id == R.id.startPage || v.id == R.id.allAppsPage) return v
+            v = v.parent as? View ?: return grid
+        }
+    }
+
+    private val locked = HashMap<View, Int>()
+
+    /** Hold the page height so a taskbar inset cannot reflow tiles mid-fold. */
+    private fun lock(page: View) {
+        if (locked.containsKey(page)) return
+        val h = page.height
+        if (h <= 0) return
+        locked[page] = page.layoutParams.height
+        page.layoutParams.height = h
+    }
+
+    private fun unlock(page: View) {
+        val prev = locked.remove(page) ?: return
+        page.layoutParams.height = prev
+        page.requestLayout()
+    }
+
+    private fun freeze(grid: RecyclerView, on: Boolean) {
+        if (Build.VERSION.SDK_INT >= 29) grid.suppressLayout(on)
+        else @Suppress("DEPRECATION") grid.isLayoutFrozen = on
     }
 
     private fun pageHinge(grid: RecyclerView): Hinge {
@@ -385,13 +403,13 @@ object PageTurn {
         handler.postDelayed(run, ms)
     }
 
-    private fun unclip(grid: RecyclerView) {
-        var p: android.view.ViewParent? = grid
+    private fun unclip(start: View) {
+        var p: View? = start
         while (p is ViewGroup) {
             p.clipChildren = false
             p.clipToPadding = false
             if (p.id == android.R.id.content) break
-            p = p.parent
+            p = p.parent as? View
         }
     }
 
