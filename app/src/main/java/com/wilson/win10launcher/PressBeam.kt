@@ -11,7 +11,6 @@ import android.graphics.Shader
 import android.graphics.drawable.Drawable
 import android.view.MotionEvent
 import android.view.View
-import android.view.ViewConfiguration
 import android.view.animation.DecelerateInterpolator
 import kotlin.math.abs
 import kotlin.math.max
@@ -34,7 +33,6 @@ object PressBeam {
                 next.downX = e.x
                 next.downY = e.y
                 next.scrolled = false
-                lean(row, e.x, e.y)
                 next.menu?.let { row.removeCallbacks(it) }
                 val fire = Runnable {
                     next.menu = null
@@ -45,43 +43,36 @@ object PressBeam {
                 next.menu = fire
                 row.postDelayed(fire, MENU_DELAY)
                 row.post { row.cancelLongPress() }
-                return false
+                return true
             }
             MotionEvent.ACTION_MOVE -> {
                 val active = runs[row] ?: return false
                 if (active.scrolled) return false
                 val density = row.resources.displayMetrics.density
-                val slop = density * 14f
-                val dx = abs(e.x - active.downX)
                 val dy = abs(e.y - active.downY)
-                // A sideways drag is the swipe back to Start. Do not keep it.
-                val swipe = dx > density * 20f && dx > dy * 1.2f
-                val scroll = dy > slop && dy > dx
-                if (swipe || scroll) {
+                val dx = abs(e.x - active.downX)
+                if (dy > density * 14f && dy > dx) {
                     active.scrolled = true
                     active.menu?.let { row.removeCallbacks(it) }
                     active.menu = null
-                    row.parent?.requestDisallowInterceptTouchEvent(false)
                     settle(row, 60)
                     return false
                 }
                 track(row, icon, e.x, e.y)
-                lean(row, e.x, e.y)
-                return false
+                return true
             }
             MotionEvent.ACTION_UP -> {
                 val active = runs[row]
-                val launch = active != null && !active.scrolled && !active.sticky && wandered(row, active, e)
+                val launch = active != null && !active.scrolled && !active.sticky
                 cancelMenu(row)
                 settle(row, 160)
                 if (launch) row.performClick()
-                return false
+                return true
             }
             MotionEvent.ACTION_CANCEL -> {
-                val active = runs[row]
                 cancelMenu(row)
                 settle(row, 80)
-                return active?.sticky == true
+                return true
             }
         }
         return false
@@ -164,16 +155,6 @@ object PressBeam {
         bar.invalidateSelf()
     }
 
-    /** Same lean as a Start tile, kept small because the row is wide. */
-    private fun lean(row: View, x: Float, y: Float) {
-        val w = row.width.coerceAtLeast(1).toFloat()
-        val h = row.height.coerceAtLeast(1).toFloat()
-        row.cameraDistance = w * 14f
-        val max = 5f
-        row.rotationY = ((x - w / 2f) / (w / 2f) * max).coerceIn(-max, max)
-        row.rotationX = ((h / 2f - y) / (h / 2f) * max).coerceIn(-max, max)
-    }
-
     private class Run(val bar: Bar) {
         var fade: ValueAnimator? = null
         var menu: Runnable? = null
@@ -181,15 +162,6 @@ object PressBeam {
         var downY = 0f
         var scrolled = false
         var sticky = false
-    }
-
-    /** Moved past a tap, but not far enough to be a swipe back to Start. */
-    private fun wandered(row: View, run: Run, e: MotionEvent): Boolean {
-        val touch = ViewConfiguration.get(row.context).scaledTouchSlop.toFloat()
-        val limit = 20f * row.resources.displayMetrics.density
-        val dx = abs(e.x - run.downX)
-        val dy = abs(e.y - run.downY)
-        return (dx > touch || dy > touch) && dx < limit && dy < limit
     }
 
     private class Bar : Drawable() {
