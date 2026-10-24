@@ -13,7 +13,10 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
-import android.widget.PopupMenu
+import android.graphics.drawable.ColorDrawable
+import android.view.HapticFeedbackConstants
+import android.widget.LinearLayout
+import android.widget.PopupWindow
 import android.widget.TextView
 import android.widget.Toast
 import android.view.animation.DecelerateInterpolator
@@ -44,6 +47,14 @@ class MainActivity : AppCompatActivity() {
     private var featherY = 0f
     private var featherToken = 0
     private var appliedDark = true
+    /** Home pressed while Start was already the screen on top. Don't animate it. */
+    private var optionsPopup: PopupWindow? = null
+    private var holdEdit: Runnable? = null
+    private var holdX = 0f
+    private var holdY = 0f
+    private var fingerX = 0f
+    private var fingerY = 0f
+    private var grabHeld: ((View, Tile) -> Unit)? = null
     /** Home pressed while Start was already the screen on top. Don't animate it. */
     private var quietHome = false
     private val timeTick = object : BroadcastReceiver() {
@@ -517,54 +528,98 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showOptions(t: Tile, anchor: View) {
-        val pm = PopupMenu(this, anchor)
-        pm.menu.add("Small tile")
-        pm.menu.add("Medium tile")
-        pm.menu.add("Wide tile")
-        pm.menu.add("Unpin from Start")
+        optionsPopup?.dismiss()
+        val labels = mutableListOf("Small tile", "Medium tile", "Wide tile", "Unpin from Start")
         val remove = Uninstall.label(this, t.pkg, t.cls)
-        if (remove != null) pm.menu.add(remove)
-        if (!adapter.editMode) pm.menu.add("Move tiles")
-        pm.setOnMenuItemClickListener { item ->
-            when (item.title.toString()) {
-                "Move tiles" -> {
-                    adapter.editMode = true
-                    applyChrome()
-                    return@setOnMenuItemClickListener true
-                }
-                "Uninstall", "Uninstall updates", "App info" -> {
-                    Uninstall.start(this, t.pkg, t.label)
-                    return@setOnMenuItemClickListener true
-                }
-            }
-            val tiles = prefs.loadTiles().toMutableList()
-            val idx = tiles.indexOfFirst { it.pkg == t.pkg && it.cls == t.cls }
-            if (idx < 0) return@setOnMenuItemClickListener true
-            when (item.title.toString()) {
-                "Unpin from Start" -> tiles.removeAt(idx)
-                "Small tile", "Medium tile", "Wide tile" -> {
-                    val tile = tiles[idx]
-                    val oldSize = tile.size
-                    val oldCol = tile.col
-                    tile.size = when (item.title.toString()) {
-                        "Small tile" -> Tile.SMALL
-                        "Medium tile" -> Tile.MEDIUM
-                        else -> Tile.WIDE
-                    }
-                    tile.col = TileGrid.snapCol(tile.size, tile.col, cols)
-                    if (!TileGrid.fits(tiles, tile, cols)) {
-                        tile.size = oldSize
-                        tile.col = oldCol
-                        Toast.makeText(this, "No room there", Toast.LENGTH_SHORT).show()
-                        return@setOnMenuItemClickListener true
-                    }
-                }
-            }
-            prefs.saveTiles(tiles)
-            refresh()
-            true
+        if (remove != null) labels.add(remove)
+        if (!adapter.editMode) labels.add("Move tiles")
+        val ink = if (prefs.darkTheme) Color.WHITE else Color.BLACK
+        val col = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(4), 0, dp(4))
         }
-        pm.show()
+        val popup = PopupWindow(col, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, false)
+        for (label in labels) {
+            col.addView(TextView(this).apply {
+                text = label
+                textSize = 16f
+                setTextColor(ink)
+                setPadding(dp(20), dp(14), dp(28), dp(14))
+                setOnClickListener {
+                    popup.dismiss()
+                    applyTileOption(t, label)
+                }
+            })
+        }
+        // Not focusable, so the finger that opened the menu is still tracked.
+        popup.setBackgroundDrawable(ColorDrawable(if (prefs.darkTheme) 0xFF2B2B2B.toInt() else 0xFFF2F2F2.toInt()))
+        popup.elevation = dp(8).toFloat()
+        popup.isOutsideTouchable = true
+        popup.setOnDismissListener { if (optionsPopup == popup) optionsPopup = null }
+        optionsPopup = popup
+        popup.showAsDropDown(anchor)
+        if (!adapter.editMode) armEditHold(anchor, t)
+    }
+
+    private fun armEditHold(view: View, tile: Tile) {
+        holdEdit?.let { grid.removeCallbacks(it) }
+        holdX = fingerX
+        holdY = fingerY
+        val run = Runnable {
+            holdEdit = null
+            if (adapter.editMode || leave != Leave.NONE) return@Runnable
+            optionsPopup?.dismiss()
+            adapter.editMode = true
+            applyChrome()
+            view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+            grabHeld?.invoke(view, tile)
+        }
+        holdEdit = run
+        grid.postDelayed(run, 420L)
+    }
+
+    private fun cancelHoldEdit() {
+        holdEdit?.let { grid.removeCallbacks(it) }
+        holdEdit = null
+    }
+
+    private fun applyTileOption(t: Tile, title: String) {
+        when (title) {
+            "Move tiles" -> {
+                adapter.editMode = true
+                applyChrome()
+                return
+            }
+            "Uninstall", "Uninstall updates", "App info" -> {
+                Uninstall.start(this, t.pkg, t.label)
+                return
+            }
+        }
+        val tiles = prefs.loadTiles().toMutableList()
+        val idx = tiles.indexOfFirst { it.pkg == t.pkg && it.cls == t.cls }
+        if (idx < 0) return
+        when (title) {
+            "Unpin from Start" -> tiles.removeAt(idx)
+            "Small tile", "Medium tile", "Wide tile" -> {
+                val tile = tiles[idx]
+                val oldSize = tile.size
+                val oldCol = tile.col
+                tile.size = when (title) {
+                    "Small tile" -> Tile.SMALL
+                    "Medium tile" -> Tile.MEDIUM
+                    else -> Tile.WIDE
+                }
+                tile.col = TileGrid.snapCol(tile.size, tile.col, cols)
+                if (!TileGrid.fits(tiles, tile, cols)) {
+                    tile.size = oldSize
+                    tile.col = oldCol
+                    Toast.makeText(this, "No room there", Toast.LENGTH_SHORT).show()
+                    return
+                }
+            }
+        }
+        prefs.saveTiles(tiles)
+        refresh()
     }
 
     /** Drag a tile by its top-left. Empty cells are allowed. Other tiles stay put. */
@@ -577,10 +632,30 @@ class MainActivity : AppCompatActivity() {
         private var lastY = 0f
         private var moved = false
 
+        init {
+            grabHeld = { view, held ->
+                child = view
+                tile = held
+                startX = fingerX
+                startY = fingerY
+                lastX = fingerX
+                lastY = fingerY
+                moved = false
+                view.cancelLongPress()
+                view.animate().cancel()
+                view.scaleX = 1.06f
+                view.scaleY = 1.06f
+                view.translationZ = dp(12).toFloat()
+            }
+        }
+
         override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
-            if (!adapter.editMode || leave != Leave.NONE) return false
+            if (leave != Leave.NONE) return false
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    fingerX = e.x
+                    fingerY = e.y
+                    cancelHoldEdit()
                     val hit = rv.findChildViewUnder(e.x, e.y)
                     val pos = if (hit == null) RecyclerView.NO_POSITION else rv.getChildAdapterPosition(hit)
                     if (hit == null || pos == RecyclerView.NO_POSITION || adapter.isAdd(pos)) {
@@ -588,6 +663,7 @@ class MainActivity : AppCompatActivity() {
                         tile = null
                         return false
                     }
+                    if (!adapter.editMode) return false
                     child = hit
                     tile = adapter.tileAt(pos)
                     startX = e.x
@@ -597,6 +673,16 @@ class MainActivity : AppCompatActivity() {
                     moved = false
                 }
                 MotionEvent.ACTION_MOVE -> {
+                    fingerX = e.x
+                    fingerY = e.y
+                    if (!adapter.editMode) {
+                        if (holdEdit != null) {
+                            val dx = e.x - holdX
+                            val dy = e.y - holdY
+                            if (dx * dx + dy * dy > dp(16) * dp(16)) cancelHoldEdit()
+                        }
+                        return false
+                    }
                     val view = child ?: return false
                     val dx = e.x - startX
                     val dy = e.y - startY
@@ -616,7 +702,14 @@ class MainActivity : AppCompatActivity() {
                     return true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    cancelHoldEdit()
                     if (!moved) {
+                        child?.let {
+                            it.animate().cancel()
+                            it.scaleX = 1f
+                            it.scaleY = 1f
+                            it.translationZ = 0f
+                        }
                         child = null
                         tile = null
                     }
