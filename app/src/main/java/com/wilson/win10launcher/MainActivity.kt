@@ -1,5 +1,6 @@
 package com.wilson.win10launcher
 
+import android.animation.ValueAnimator
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
@@ -27,9 +28,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var adapter: TileAdapter
     private lateinit var grid: RecyclerView
     private lateinit var pager: View
+    private lateinit var startPage: View
     private lateinit var allAppsPage: View
     private lateinit var appsPanel: AllAppsPanel
     private var drawerOpen = false
+    private var drawerDragging = false
+    private var drawerX = 0f
+    private var drawerAnim: ValueAnimator? = null
     private lateinit var editBanner: TextView
     private lateinit var editBtn: Button
     private val cols = Tile.GRID
@@ -90,7 +95,9 @@ class MainActivity : AppCompatActivity() {
         adapter = TileAdapter(this, prefs) { handle(it) }
         grid = findViewById(R.id.tileGrid)
         pager = findViewById(R.id.pager)
+        startPage = findViewById(R.id.startPage)
         allAppsPage = findViewById(R.id.allAppsPage)
+        allAppsPage.isClickable = true
         allAppsPage.visibility = View.INVISIBLE
         appsPanel = AllAppsPanel(this, allAppsPage, prefs, onLaunch = { launchFromDrawer(it) }) {
             refresh()
@@ -354,7 +361,7 @@ class MainActivity : AppCompatActivity() {
     private fun dp(n: Int): Int =
         (n * resources.displayMetrics.density).toInt()
 
-    /** Flat slide. All Apps is the next page, so it follows the finger. No second animation. */
+    /** Both pages slide. The window itself stays put, so the list can be touched. */
     private fun swipeAllApps(fromStart: Boolean) = object : RecyclerView.SimpleOnItemTouchListener() {
         private var downRawX = 0f
         private var downRawY = 0f
@@ -367,18 +374,20 @@ class MainActivity : AppCompatActivity() {
                 MotionEvent.ACTION_DOWN -> {
                     downRawX = e.rawX
                     downRawY = e.rawY
-                    origin = pager.translationX
+                    origin = drawerX
                     dragging = false
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = e.rawX - downRawX
                     val dy = e.rawY - downRawY
-                    val left = fromStart && dx < -dp(8) && kotlin.math.abs(dx) > kotlin.math.abs(dy)
-                    val right = !fromStart && dx > dp(8) && kotlin.math.abs(dx) > kotlin.math.abs(dy)
+                    val horizontal = kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.6f && kotlin.math.abs(dx) > dp(24)
+                    val left = fromStart && dx < 0f && horizontal
+                    val right = !fromStart && dx > 0f && horizontal
                     if (left || right) {
                         dragging = true
-                        pager.animate().cancel()
-                        moveDrawer(origin + dx)
+                        drawerDragging = true
+                        drawerAnim?.cancel()
+                        applyDrawer(origin + dx)
                         return true
                     }
                 }
@@ -390,12 +399,13 @@ class MainActivity : AppCompatActivity() {
             if (!dragging) return
             val w = pageWidth()
             when (e.actionMasked) {
-                MotionEvent.ACTION_MOVE -> moveDrawer(origin + (e.rawX - downRawX))
+                MotionEvent.ACTION_MOVE -> applyDrawer(origin + (e.rawX - downRawX))
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     dragging = false
-                    val shown = -pager.translationX
+                    drawerDragging = false
+                    val shown = -drawerX
                     val open = if (e.actionMasked == MotionEvent.ACTION_CANCEL) drawerOpen
-                    else if (origin == 0f) shown > w * 0.18f
+                    else if (origin > -w * 0.5f) shown > w * 0.18f
                     else shown > w * 0.82f
                     settleDrawer(open)
                 }
@@ -406,38 +416,40 @@ class MainActivity : AppCompatActivity() {
     private fun pageWidth(): Float = pager.width.toFloat().coerceAtLeast(1f)
 
     private fun placeDrawer() {
-        val w = pager.width
-        if (w <= 0) return
-        allAppsPage.translationX = w.toFloat()
+        if (pager.width <= 0) return
+        pager.translationX = 0f
+        if (!drawerDragging && drawerAnim?.isRunning != true) {
+            applyDrawer(if (drawerOpen) -pager.width.toFloat() else 0f)
+        }
         if (allAppsPage.visibility != View.VISIBLE) allAppsPage.visibility = View.VISIBLE
-        if (!drawerOpen && pager.translationX == 0f) return
-        if (drawerOpen) pager.translationX = -w.toFloat()
     }
 
-    private fun moveDrawer(x: Float) {
+    private fun applyDrawer(x: Float) {
         val w = pageWidth()
-        allAppsPage.translationX = w
-        pager.translationX = x.coerceIn(-w, 0f)
+        drawerX = x.coerceIn(-w, 0f)
+        startPage.translationX = drawerX
+        allAppsPage.translationX = drawerX + w
     }
 
     private fun settleDrawer(open: Boolean) {
-        val w = pageWidth()
+        val target = if (open) -pageWidth() else 0f
         drawerOpen = open
         if (!open) appsPanel.hideKeyboard()
-        allAppsPage.translationX = w
-        pager.animate().cancel()
-        pager.animate()
-            .translationX(if (open) -w else 0f)
-            .setDuration(160L)
-            .setInterpolator(DecelerateInterpolator())
-            .start()
+        drawerAnim?.cancel()
+        drawerAnim = ValueAnimator.ofFloat(drawerX, target).apply {
+            duration = 140L
+            interpolator = DecelerateInterpolator()
+            addUpdateListener { applyDrawer(it.animatedValue as Float) }
+            start()
+        }
     }
 
     private fun snapDrawerClosed() {
-        if (!::pager.isInitialized) return
-        if (!drawerOpen && pager.translationX == 0f) return
-        pager.animate().cancel()
-        pager.translationX = 0f
+        if (!::startPage.isInitialized) return
+        if (!drawerOpen && drawerX == 0f && drawerAnim?.isRunning != true) return
+        drawerAnim?.cancel()
+        drawerDragging = false
+        applyDrawer(0f)
         drawerOpen = false
         if (::appsPanel.isInitialized) appsPanel.hideKeyboard()
     }

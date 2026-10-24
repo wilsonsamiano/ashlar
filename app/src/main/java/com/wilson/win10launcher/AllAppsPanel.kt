@@ -1,6 +1,7 @@
 package com.wilson.win10launcher
 
 import android.content.res.ColorStateList
+import android.graphics.drawable.Drawable
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.LayoutInflater
@@ -31,6 +32,7 @@ class AllAppsPanel(
     private val search: EditText = page.findViewById(R.id.searchBox)
     private var all: List<AppList.App> = emptyList()
     private val adapter = AppsAdapter()
+    private val icons = java.util.concurrent.ConcurrentHashMap<String, Drawable>()
 
     fun bind() {
         val title = page.findViewById<TextView>(R.id.titleBar)
@@ -44,6 +46,8 @@ class AllAppsPanel(
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun afterTextChanged(s: Editable?) = show(s?.toString().orEmpty())
         })
+        search.isFocusable = true
+        search.isFocusableInTouchMode = true
         list.layoutManager = LinearLayoutManager(activity)
         list.adapter = adapter
         list.itemAnimator = null
@@ -53,6 +57,27 @@ class AllAppsPanel(
         all = (AppList.get(activity.packageManager) + AppList.App(Tile.CLOCK_PKG, Tile.CLOCK_CLS, "Clock"))
             .sortedWith(compareBy({ it.label.lowercase() }, { it.pkg }))
         show("")
+        preloadIcons()
+    }
+
+    private fun preloadIcons() {
+        val apps = all
+        val pm = activity.packageManager
+        Thread {
+            var n = 0
+            for (app in apps) {
+                if (Tile.isClock(app.pkg, app.cls)) continue
+                val key = app.pkg + "\n" + app.cls
+                if (icons.containsKey(key)) continue
+                try {
+                    icons[key] = pm.getActivityIcon(android.content.ComponentName(app.pkg, app.cls))
+                } catch (_: Exception) {
+                }
+                n++
+                if (n % 24 == 0) activity.runOnUiThread { if (!activity.isDestroyed) adapter.notifyDataSetChanged() }
+            }
+            activity.runOnUiThread { if (!activity.isDestroyed) adapter.notifyDataSetChanged() }
+        }.start()
     }
 
     fun hideKeyboard() {
@@ -175,26 +200,19 @@ class AllAppsPanel(
                     val vh = h as AppVH
                     vh.label.text = r.app.label
                     vh.label.setTextColor(prefs.fgColor())
+                    val key = r.app.pkg + "\n" + r.app.cls
+                    val raw = icons[key]
                     if (Tile.isClock(r.app.pkg, r.app.cls)) {
                         vh.icon.setImageResource(android.R.drawable.ic_lock_idle_alarm)
                         vh.icon.imageTintList = ColorStateList.valueOf(prefs.fgColor())
+                    } else if (raw != null) {
+                        vh.icon.imageTintList = null
+                        val copy = raw.constantState?.newDrawable(activity.resources) ?: raw
+                        val iconPx = (44 * activity.resources.displayMetrics.density).toInt()
+                        vh.icon.setImageDrawable(IconMasks.apply(activity.resources, copy, prefs.iconShape, iconPx))
                     } else {
                         vh.icon.imageTintList = null
-                        try {
-                            val iconPx = (44 * activity.resources.displayMetrics.density).toInt()
-                            vh.icon.setImageDrawable(
-                                IconMasks.apply(
-                                    activity.resources,
-                                    activity.packageManager.getActivityIcon(
-                                        android.content.ComponentName(r.app.pkg, r.app.cls)
-                                    ),
-                                    prefs.iconShape,
-                                    iconPx
-                                )
-                            )
-                        } catch (e: Exception) {
-                            vh.icon.setImageDrawable(null)
-                        }
+                        vh.icon.setImageDrawable(null)
                     }
                     vh.itemView.setOnClickListener { onLaunch(r.app) }
                     vh.itemView.setOnLongClickListener { menu(r.app, vh.itemView); true }

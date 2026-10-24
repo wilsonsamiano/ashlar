@@ -11,8 +11,8 @@ android {
         applicationId = "com.wilson.win10launcher"
         minSdk = 26
         targetSdk = 34
-        versionCode = 54
-        versionName = "2.43"
+        versionCode = 55
+        versionName = "3.0"
     }
 
     signingConfigs {
