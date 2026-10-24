@@ -11,6 +11,7 @@ import android.graphics.Shader
 import android.graphics.drawable.Drawable
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.animation.DecelerateInterpolator
 import kotlin.math.abs
 import kotlin.math.max
@@ -33,12 +34,11 @@ object PressBeam {
                 next.downX = e.x
                 next.downY = e.y
                 next.scrolled = false
-                next.owned = false
                 lean(row, e.x, e.y)
                 next.menu?.let { row.removeCallbacks(it) }
                 val fire = Runnable {
                     next.menu = null
-                    if (next.scrolled || next.owned || runs[row] !== next) return@Runnable
+                    if (next.scrolled || runs[row] !== next) return@Runnable
                     next.sticky = true
                     onMenu()
                 }
@@ -50,44 +50,38 @@ object PressBeam {
             MotionEvent.ACTION_MOVE -> {
                 val active = runs[row] ?: return false
                 if (active.scrolled) return false
-                track(row, icon, e.x, e.y)
-                lean(row, e.x, e.y)
-                val slop = row.resources.displayMetrics.density * 14f
+                val density = row.resources.displayMetrics.density
+                val slop = density * 14f
                 val dx = abs(e.x - active.downX)
                 val dy = abs(e.y - active.downY)
-                if (dy > slop && dy > dx) {
+                // A sideways drag is the swipe back to Start. Do not keep it.
+                val swipe = dx > density * 20f && dx > dy * 1.2f
+                val scroll = dy > slop && dy > dx
+                if (swipe || scroll) {
                     active.scrolled = true
                     active.menu?.let { row.removeCallbacks(it) }
                     active.menu = null
-                    (row.parent as? View)?.parent?.requestDisallowInterceptTouchEvent(false)
-                    settle(row, 80)
+                    row.parent?.requestDisallowInterceptTouchEvent(false)
+                    settle(row, 60)
                     return false
                 }
-                if (dx > slop || dy > slop) {
-                    active.owned = true
-                    active.menu?.let { row.removeCallbacks(it) }
-                    active.menu = null
-                    row.parent?.requestDisallowInterceptTouchEvent(true)
-                }
-                return active.owned
+                track(row, icon, e.x, e.y)
+                lean(row, e.x, e.y)
+                return false
             }
             MotionEvent.ACTION_UP -> {
                 val active = runs[row]
-                val launch = active?.owned == true && active.scrolled.not() && active.sticky.not()
+                val launch = active != null && !active.scrolled && !active.sticky && wandered(row, active, e)
                 cancelMenu(row)
                 settle(row, 160)
                 if (launch) row.performClick()
-                return active?.owned == true
+                return false
             }
             MotionEvent.ACTION_CANCEL -> {
                 val active = runs[row]
                 cancelMenu(row)
-                if (active?.sticky == true) {
-                    settle(row, 160)
-                    return true
-                }
-                settle(row, 120)
-                return active?.owned == true
+                settle(row, 80)
+                return active?.sticky == true
             }
         }
         return false
@@ -186,8 +180,16 @@ object PressBeam {
         var downX = 0f
         var downY = 0f
         var scrolled = false
-        var owned = false
         var sticky = false
+    }
+
+    /** Moved past a tap, but not far enough to be a swipe back to Start. */
+    private fun wandered(row: View, run: Run, e: MotionEvent): Boolean {
+        val touch = ViewConfiguration.get(row.context).scaledTouchSlop.toFloat()
+        val limit = 20f * row.resources.displayMetrics.density
+        val dx = abs(e.x - run.downX)
+        val dy = abs(e.y - run.downY)
+        return (dx > touch || dy > touch) && dx < limit && dy < limit
     }
 
     private class Bar : Drawable() {
