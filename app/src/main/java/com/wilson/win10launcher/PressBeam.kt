@@ -4,52 +4,107 @@ import android.animation.ValueAnimator
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.ColorFilter
-import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.PixelFormat
-import android.graphics.RadialGradient
-import android.graphics.Shader
 import android.graphics.drawable.Drawable
 import android.view.MotionEvent
 import android.view.View
-import android.view.animation.DecelerateInterpolator
+import kotlin.math.abs
 
 /**
- * Press feedback for a wide app row. A glow runs from the finger to the icon
- * so a tap on the empty right side still shows which app was hit.
+ * Press feedback for a wide app row. The row lights as one even rectangle
+ * from the icon out to the finger, the same accent as a Start tile, and it
+ * stays lit so a tablet press on the empty side is obvious.
  */
 object PressBeam {
     private val runs = java.util.WeakHashMap<View, Run>()
+    private const val MENU_DELAY = 1000L
+    private const val LINGER = 900L
 
-    fun onTouch(row: View, icon: View, e: MotionEvent, color: Int) {
+    fun onTouch(row: View, icon: View, e: MotionEvent, color: Int, onMenu: () -> Unit) {
+        val run = runs[row]
         when (e.actionMasked) {
-            MotionEvent.ACTION_DOWN -> show(row, icon, e.x, color)
-            MotionEvent.ACTION_CANCEL -> release(row)
-            MotionEvent.ACTION_UP -> linger(row)
+            MotionEvent.ACTION_DOWN -> {
+                show(row, icon, e.x, color)
+                val next = runs[row] ?: return
+                next.downX = e.x
+                next.downY = e.y
+                next.scrolled = false
+                next.menu?.let { row.removeCallbacks(it) }
+                val fire = Runnable {
+                    next.menu = null
+                    if (next.scrolled || runs[row] !== next) return@Runnable
+                    next.sticky = true
+                    next.release?.let { row.removeCallbacks(it) }
+                    onMenu()
+                }
+                next.menu = fire
+                row.postDelayed(fire, MENU_DELAY)
+                row.post { row.cancelLongPress() }
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val active = run ?: return
+                if (active.scrolled) return
+                val slop = row.resources.displayMetrics.density * 12f
+                if (abs(e.x - active.downX) > slop || abs(e.y - active.downY) > slop) {
+                    active.scrolled = true
+                    active.menu?.let { row.removeCallbacks(it) }
+                    active.menu = null
+                    fade(row, 100)
+                }
+            }
+            MotionEvent.ACTION_UP -> {
+                cancelMenu(row)
+                linger(row)
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                cancelMenu(row)
+                val active = runs[row]
+                if (active?.sticky == true) return
+                if (active?.scrolled == true) fade(row, 100) else linger(row)
+            }
         }
     }
 
     fun clear(row: View) {
         val run = runs.remove(row) ?: return
         run.release?.let { row.removeCallbacks(it) }
-        run.anim?.cancel()
+        run.menu?.let { row.removeCallbacks(it) }
         run.fade?.cancel()
-        row.overlay.remove(run.beam)
-        run.icon.animate().cancel()
-        run.icon.scaleX = 1f
-        run.icon.scaleY = 1f
+        if (row.background === run.bar) row.background = null
     }
 
+    /** Drop the bar after the menu closes. */
     fun release(row: View) {
+        val run = runs[row] ?: return
+        run.sticky = false
+        fade(row, 220)
+    }
+
+    private fun cancelMenu(row: View) {
+        val run = runs[row] ?: return
+        run.menu?.let { row.removeCallbacks(it) }
+        run.menu = null
+    }
+
+    private fun linger(row: View) {
+        val run = runs[row] ?: return
+        if (run.sticky || run.fade != null) return
+        run.release?.let { row.removeCallbacks(it) }
+        val later = Runnable { fade(row, 280) }
+        run.release = later
+        row.postDelayed(later, LINGER)
+    }
+
+    private fun fade(row: View, duration: Long) {
         val run = runs[row] ?: return
         if (run.fade != null) return
         run.release?.let { row.removeCallbacks(it) }
-        run.anim?.cancel()
-        val fade = ValueAnimator.ofFloat(run.beam.alphaF, 0f)
-        fade.duration = 140
+        val fade = ValueAnimator.ofFloat(run.bar.alphaF, 0f)
+        fade.duration = duration
         fade.addUpdateListener {
-            run.beam.alphaF = it.animatedValue as Float
-            run.beam.invalidateSelf()
+            run.bar.alphaF = it.animatedValue as Float
+            run.bar.invalidateSelf()
         }
         fade.addListener(object : android.animation.AnimatorListenerAdapter() {
             override fun onAnimationEnd(animation: android.animation.Animator) {
@@ -57,126 +112,53 @@ object PressBeam {
             }
         })
         run.fade = fade
-        run.icon.animate().scaleX(1f).scaleY(1f).setDuration(120).start()
         fade.start()
-    }
-
-    private fun linger(row: View) {
-        val run = runs[row] ?: return
-        run.release?.let { row.removeCallbacks(it) }
-        val later = Runnable { release(row) }
-        run.release = later
-        row.postDelayed(later, 220)
     }
 
     private fun show(row: View, icon: View, touchX: Float, color: Int) {
         clear(row)
         if (row.width == 0) return
-        val beam = Beam()
-        beam.color = color
-        beam.touchX = touchX
-        val iconMid = icon.left + icon.width / 2f
-        val gap = 8f * row.resources.displayMetrics.density
-        beam.iconX = if (touchX >= iconMid) icon.right + gap else icon.left - gap
-        beam.glow = 14f * row.resources.displayMetrics.density
-        beam.setBounds(0, 0, row.width, row.height)
-        val run = Run(beam, icon)
-        runs[row] = run
-        row.overlay.add(beam)
-        val anim = ValueAnimator.ofFloat(0f, 1f)
-        anim.duration = 220
-        anim.interpolator = DecelerateInterpolator()
-        var pulsed = false
-        anim.addUpdateListener {
-            val p = it.animatedValue as Float
-            beam.head = p
-            beam.invalidateSelf()
-            if (!pulsed && p > 0.72f) {
-                pulsed = true
-                icon.animate().scaleX(1.14f).scaleY(1.14f).setDuration(120).start()
-            }
-        }
-        run.anim = anim
-        anim.start()
+        val density = row.resources.displayMetrics.density
+        val pad = 8f * density
+        val bar = Bar()
+        bar.color = color
+        bar.inset = 3f * density
+        val left = icon.left.toFloat() - pad
+        val right = if (touchX > icon.right + pad) row.width.toFloat() else icon.right + pad * 2
+        bar.left = left.coerceAtLeast(0f)
+        bar.right = right.coerceAtMost(row.width.toFloat())
+        row.background = bar
+        runs[row] = Run(bar)
     }
 
-    private class Run(val beam: Beam, val icon: View) {
-        var anim: ValueAnimator? = null
+    private class Run(val bar: Bar) {
         var fade: ValueAnimator? = null
         var release: Runnable? = null
+        var menu: Runnable? = null
+        var downX = 0f
+        var downY = 0f
+        var scrolled = false
+        var sticky = false
     }
 
-    private class Beam : Drawable() {
-        var touchX = 0f
-        var iconX = 0f
-        var head = 0f
+    private class Bar : Drawable() {
+        var left = 0f
+        var right = 0f
+        var inset = 0f
         var alphaF = 1f
         var color = 0xFF0078D7.toInt()
-        var glow = 24f
-        private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeCap = Paint.Cap.ROUND
-        }
-        private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
-        private val blob = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
         override fun draw(canvas: Canvas) {
             val b = bounds
             if (b.isEmpty || alphaF <= 0.01f) return
-            val r = Color.red(color)
-            val g = Color.green(color)
-            val bl = Color.blue(color)
-            fill.color = Color.argb((0x30 * alphaF).toInt(), r, g, bl)
-            canvas.drawRect(b, fill)
-
-            val cy = b.height() / 2f
-            val x0 = touchX.coerceIn(0f, b.width().toFloat())
-            val x1 = iconX.coerceIn(0f, b.width().toFloat())
-            val span = x1 - x0
-            if (kotlin.math.abs(span) < glow) {
-                drawHead(canvas, x1, cy, r, g, bl)
-                return
-            }
-            val hot = Color.argb((0xEE * alphaF).toInt(), 255, 255, 255)
-            val mid = Color.argb((0xD0 * alphaF).toInt(), r, g, bl)
-            val dim = Color.argb((0x44 * alphaF).toInt(), r, g, bl)
-            stroke.shader = null
-            stroke.strokeWidth = glow * 0.55f
-            stroke.color = dim
-            canvas.drawLine(x0, cy, x1, cy, stroke)
-            val headX = x0 + span * head
-            if (kotlin.math.abs(headX - x0) < 1f) {
-                drawHead(canvas, headX, cy, r, g, bl)
-                return
-            }
-            stroke.shader = LinearGradient(
-                x0, cy, headX, cy,
-                intArrayOf(Color.argb((0x30 * alphaF).toInt(), r, g, bl), mid, hot),
-                floatArrayOf(0f, 0.45f, 1f),
-                Shader.TileMode.CLAMP
+            paint.color = Color.argb(
+                (0xF0 * alphaF).toInt().coerceIn(0, 255),
+                Color.red(color),
+                Color.green(color),
+                Color.blue(color)
             )
-            stroke.strokeWidth = glow
-            canvas.drawLine(x0, cy, headX, cy, stroke)
-            stroke.shader = null
-            stroke.strokeWidth = glow * 0.18f
-            stroke.color = hot
-            canvas.drawLine(x0, cy, headX, cy, stroke)
-            drawHead(canvas, headX, cy, r, g, bl)
-        }
-
-        private fun drawHead(canvas: Canvas, x: Float, y: Float, r: Int, g: Int, b: Int) {
-            val radius = glow * 1.35f
-            blob.shader = RadialGradient(
-                x, y, radius,
-                intArrayOf(
-                    Color.argb((0xFF * alphaF).toInt(), 255, 255, 255),
-                    Color.argb((0xAA * alphaF).toInt(), r, g, b),
-                    Color.argb(0, r, g, b)
-                ),
-                floatArrayOf(0f, 0.38f, 1f),
-                Shader.TileMode.CLAMP
-            )
-            canvas.drawCircle(x, y, radius, blob)
+            canvas.drawRect(left, b.top + inset, right, b.bottom - inset, paint)
         }
 
         override fun setAlpha(alpha: Int) {}

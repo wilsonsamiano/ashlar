@@ -143,6 +143,7 @@ class AllAppsPanel(
             }
             true
         }
+        popup.setOnDismissListener { PressBeam.release(anchor) }
         popup.show()
     }
 
@@ -185,8 +186,12 @@ class AllAppsPanel(
                 HeaderVH(inf.inflate(R.layout.item_header, parent, false))
             } else {
                 AppVH(inf.inflate(R.layout.item_app, parent, false)).also { vh ->
+                    vh.itemView.isLongClickable = false
                     vh.itemView.setOnTouchListener { v, e ->
-                        PressBeam.onTouch(v, vh.icon, e, prefs.accentColor)
+                        PressBeam.onTouch(v, vh.icon, e, prefs.accentColor) {
+                            val app = vh.app ?: return@onTouch
+                            menu(app, v)
+                        }
                         false
                     }
                 }
@@ -203,6 +208,7 @@ class AllAppsPanel(
                 }
                 is Row.Item -> {
                     val vh = h as AppVH
+                    vh.app = r.app
                     vh.label.text = r.app.label
                     vh.label.setTextColor(prefs.fgColor())
                     val key = r.app.pkg + "\n" + r.app.cls
@@ -220,11 +226,7 @@ class AllAppsPanel(
                         vh.icon.setImageDrawable(null)
                     }
                     vh.itemView.setOnClickListener { onLaunch(r.app, vh.itemView) }
-                    vh.itemView.setOnLongClickListener {
-                        PressBeam.release(vh.itemView)
-                        menu(r.app, vh.itemView)
-                        true
-                    }
+                    vh.itemView.setOnLongClickListener(null)
                 }
             }
         }
@@ -239,6 +241,7 @@ class AllAppsPanel(
         inner class AppVH(v: View) : RecyclerView.ViewHolder(v) {
             val icon: ImageView = v.findViewById(R.id.appIcon)
             val label: TextView = v.findViewById(R.id.appLabel)
+            var app: AppList.App? = null
         }
     }
 }

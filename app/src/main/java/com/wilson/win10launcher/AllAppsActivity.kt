@@ -198,8 +198,12 @@ class AllAppsActivity : AppCompatActivity() {
                 HeaderVH(inf.inflate(R.layout.item_header, parent, false))
             } else {
                 AppVH(inf.inflate(R.layout.item_app, parent, false)).also { vh ->
+                    vh.itemView.isLongClickable = false
                     vh.itemView.setOnTouchListener { v, e ->
-                        PressBeam.onTouch(v, vh.icon, e, prefs.accentColor)
+                        PressBeam.onTouch(v, vh.icon, e, prefs.accentColor) {
+                            val app = vh.app ?: return@onTouch
+                            onAppLongClick(app, v)
+                        }
                         false
                     }
                 }
@@ -238,6 +242,7 @@ class AllAppsActivity : AppCompatActivity() {
                 }
                 is Row.Item -> {
                     val vh = h as AppVH
+                    vh.app = r.app
                     vh.label.text = r.app.label
                     vh.label.setTextColor(prefs.fgColor())
                     if ((prefs.vistaVibe || prefs.ice) && prefs.darkTheme) {
@@ -271,11 +276,7 @@ class AllAppsActivity : AppCompatActivity() {
                     vh.itemView.setOnClickListener {
                         if (tapLaunches) launchApp(r.app, vh.itemView) else onAppClick(r.app)
                     }
-                    vh.itemView.setOnLongClickListener {
-                        PressBeam.release(vh.itemView)
-                        onAppLongClick(r.app, vh.itemView)
-                        true
-                    }
+                    vh.itemView.setOnLongClickListener(null)
                 }
             }
         }
@@ -288,6 +289,7 @@ class AllAppsActivity : AppCompatActivity() {
         inner class AppVH(v: View) : RecyclerView.ViewHolder(v) {
             val icon: ImageView = v.findViewById(R.id.appIcon)
             val label: TextView = v.findViewById(R.id.appLabel)
+            var app: AppList.App? = null
         }
     }
 
@@ -316,6 +318,7 @@ class AllAppsActivity : AppCompatActivity() {
             }
             true
         }
+        menu.setOnDismissListener { PressBeam.release(anchor) }
         menu.show()
     }
 
