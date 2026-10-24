@@ -46,6 +46,8 @@ class MainActivity : AppCompatActivity() {
     private var featherX = 0f
     private var featherY = 0f
     private var featherToken = 0
+    /** The fold that opened an app was the All Apps list, not Start. */
+    private var featherFromDrawer = false
     private var appliedDark = true
     /** Home pressed while Start was already the screen on top. Don't animate it. */
     private var optionsPopup: PopupWindow? = null
@@ -110,7 +112,9 @@ class MainActivity : AppCompatActivity() {
         allAppsPage = findViewById(R.id.allAppsPage)
         allAppsPage.isClickable = true
         allAppsPage.visibility = View.INVISIBLE
-        appsPanel = AllAppsPanel(this, allAppsPage, prefs, onLaunch = { launchFromDrawer(it) }) {
+        appsPanel = AllAppsPanel(this, allAppsPage, prefs, onLaunch = { app, view ->
+            launchFromDrawer(app, view)
+        }) {
             refresh()
         }
         appsPanel.bind()
@@ -178,6 +182,8 @@ class MainActivity : AppCompatActivity() {
         if (home) {
             snapDrawerClosed()
             PageTurn.noSystemAnim(this)
+            featherFromDrawer = false
+            if (::appsPanel.isInitialized) PageTurn.featherReset(appsPanel.list)
             // Still on this screen. Don't rebuild or fade it.
             if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return
             leave = Leave.NONE
@@ -235,7 +241,8 @@ class MainActivity : AppCompatActivity() {
         }
         quietHome = false
         val returning = leave
-        if (returning == Leave.FEATHER) {
+        val fromDrawer = featherFromDrawer
+        if (returning == Leave.FEATHER && !fromDrawer) {
             featherToken++
             adapter.featherHold = true
         }
@@ -250,11 +257,16 @@ class MainActivity : AppCompatActivity() {
             }
             Leave.TURN -> PageTurn.returnTurn(page)
             Leave.FEATHER -> {
-                PageTurn.featherReturn(grid, featherX, featherY)
-                grid.postDelayed({
-                    adapter.featherHold = false
-                    PageTurn.flatten(grid)
-                }, 1100L)
+                featherFromDrawer = false
+                if (fromDrawer) {
+                    PageTurn.featherReturn(appsPanel.list, featherX, featherY)
+                } else {
+                    PageTurn.featherReturn(grid, featherX, featherY)
+                    grid.postDelayed({
+                        adapter.featherHold = false
+                        PageTurn.flatten(grid)
+                    }, 1100L)
+                }
             }
             Leave.NONE -> if (!PageTurn.animating()) PageTurn.flatten(grid)
         }
@@ -465,7 +477,8 @@ class MainActivity : AppCompatActivity() {
         if (::appsPanel.isInitialized) appsPanel.hideKeyboard()
     }
 
-    private fun launchFromDrawer(app: AppList.App) {
+    private fun launchFromDrawer(app: AppList.App, view: View) {
+        if (leave != Leave.NONE) return
         val i = if (Tile.isClock(app.pkg, app.cls)) {
             Tile.clockIntent(this)
         } else {
@@ -475,12 +488,28 @@ class MainActivity : AppCompatActivity() {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
             }
         }
-        try {
-            startActivity(PageTurn.quiet(i), PageTurn.appOptions(this))
-            PageTurn.noSystemAnim(this)
-            prefs.noteLaunch(app.pkg)
-        } catch (e: Exception) {
-            Toast.makeText(this, "Can't open ${app.label}", Toast.LENGTH_SHORT).show()
+        val loc = IntArray(2)
+        view.getLocationOnScreen(loc)
+        featherX = loc[0] + view.width / 2f
+        featherY = loc[1] + view.height / 2f
+        leave = Leave.FEATHER
+        featherFromDrawer = true
+        val token = ++featherToken
+        PageTurn.featherOut(appsPanel.list, view) {
+            if (token != featherToken || leave != Leave.FEATHER) {
+                PageTurn.featherReset(appsPanel.list)
+                return@featherOut
+            }
+            try {
+                startActivity(PageTurn.quiet(i), PageTurn.appOptions(this))
+                PageTurn.noSystemAnim(this)
+                prefs.noteLaunch(app.pkg)
+            } catch (e: Exception) {
+                leave = Leave.NONE
+                featherFromDrawer = false
+                PageTurn.featherReset(appsPanel.list)
+                Toast.makeText(this, "Can't open ${app.label}", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -631,6 +660,8 @@ class MainActivity : AppCompatActivity() {
         private var lastX = 0f
         private var lastY = 0f
         private var moved = false
+        private var armed = false
+        private var grabToken = 0
 
         init {
             grabHeld = { view, held ->
@@ -641,12 +672,29 @@ class MainActivity : AppCompatActivity() {
                 lastX = fingerX
                 lastY = fingerY
                 moved = false
+                armed = true
+                grabToken++
                 view.cancelLongPress()
                 view.animate().cancel()
                 view.scaleX = 1.06f
                 view.scaleY = 1.06f
                 view.translationZ = dp(12).toFloat()
             }
+        }
+
+        private fun lift(view: View) {
+            view.cancelLongPress()
+            view.animate().cancel()
+            view.scaleX = 1.06f
+            view.scaleY = 1.06f
+            view.translationZ = dp(12).toFloat()
+        }
+
+        private fun settle(view: View) {
+            view.animate().cancel()
+            view.scaleX = 1f
+            view.scaleY = 1f
+            view.translationZ = 0f
         }
 
         override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
@@ -656,6 +704,10 @@ class MainActivity : AppCompatActivity() {
                     fingerX = e.x
                     fingerY = e.y
                     cancelHoldEdit()
+                    optionsPopup?.dismiss()
+                    grabToken++
+                    armed = false
+                    moved = false
                     val hit = rv.findChildViewUnder(e.x, e.y)
                     val pos = if (hit == null) RecyclerView.NO_POSITION else rv.getChildAdapterPosition(hit)
                     if (hit == null || pos == RecyclerView.NO_POSITION || adapter.isAdd(pos)) {
@@ -670,7 +722,12 @@ class MainActivity : AppCompatActivity() {
                     startY = e.y
                     lastX = e.x
                     lastY = e.y
-                    moved = false
+                    val token = grabToken
+                    rv.postDelayed({
+                        if (token != grabToken || child !== hit || moved) return@postDelayed
+                        armed = true
+                        lift(hit)
+                    }, 220L)
                 }
                 MotionEvent.ACTION_MOVE -> {
                     fingerX = e.x
@@ -686,33 +743,37 @@ class MainActivity : AppCompatActivity() {
                     val view = child ?: return false
                     val dx = e.x - startX
                     val dy = e.y - startY
+                    if (!armed) {
+                        // A swipe before the tile is picked up scrolls the screen.
+                        if (dx * dx + dy * dy > dp(10) * dp(10)) {
+                            grabToken++
+                            child = null
+                            tile = null
+                        }
+                        return false
+                    }
                     if (!moved && dx * dx + dy * dy < dp(8) * dp(8)) return false
                     if (!moved) {
                         moved = true
                         organizeTile = tile
                         rememberHomes()
-                        view.cancelLongPress()
-                        view.animate().cancel()
-                        view.scaleX = 1.05f
-                        view.scaleY = 1.05f
-                        view.translationZ = dp(12).toFloat()
+                        lift(view)
                         (rv.layoutManager as? TileLayoutManager)?.held = view
                         view.parent?.requestDisallowInterceptTouchEvent(true)
                     }
                     return true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    val swallow = armed && !moved
+                    grabToken++
                     cancelHoldEdit()
                     if (!moved) {
-                        child?.let {
-                            it.animate().cancel()
-                            it.scaleX = 1f
-                            it.scaleY = 1f
-                            it.translationZ = 0f
-                        }
+                        child?.let { settle(it) }
                         child = null
                         tile = null
+                        armed = false
                     }
+                    if (swallow) return true
                 }
             }
             return false
@@ -736,6 +797,15 @@ class MainActivity : AppCompatActivity() {
                     previewHover(rv, view)
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (!moved) {
+                        settle(view)
+                        (rv.layoutManager as? TileLayoutManager)?.held = null
+                        child = null
+                        tile = null
+                        armed = false
+                        organizeTile = null
+                        return
+                    }
                     val left = view.left + view.translationX
                     val top = view.top + view.translationY
                     val dropped = tile
@@ -748,6 +818,7 @@ class MainActivity : AppCompatActivity() {
                     (rv.layoutManager as? TileLayoutManager)?.held = null
                     child = null
                     tile = null
+                    armed = false
                     organizeTile = null
                     moved = false
                     hoverCol = Int.MIN_VALUE

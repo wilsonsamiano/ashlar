@@ -25,7 +25,7 @@ class AllAppsPanel(
     private val activity: AppCompatActivity,
     private val page: View,
     private val prefs: Prefs,
-    private val onLaunch: (AppList.App) -> Unit,
+    private val onLaunch: (AppList.App, View) -> Unit,
     private val onPinned: () -> Unit
 ) {
     val list: RecyclerView = page.findViewById(R.id.appsList)
@@ -214,7 +214,7 @@ class AllAppsPanel(
                         vh.icon.imageTintList = null
                         vh.icon.setImageDrawable(null)
                     }
-                    vh.itemView.setOnClickListener { onLaunch(r.app) }
+                    vh.itemView.setOnClickListener { onLaunch(r.app, vh.itemView) }
                     vh.itemView.setOnLongClickListener { menu(r.app, vh.itemView); true }
                 }
             }
