@@ -184,7 +184,12 @@ class AllAppsPanel(
             return if (viewType == 0) {
                 HeaderVH(inf.inflate(R.layout.item_header, parent, false))
             } else {
-                AppVH(inf.inflate(R.layout.item_app, parent, false))
+                AppVH(inf.inflate(R.layout.item_app, parent, false)).also { vh ->
+                    vh.itemView.setOnTouchListener { v, e ->
+                        PressBeam.onTouch(v, vh.icon, e, prefs.accentColor)
+                        false
+                    }
+                }
             }
         }
         override fun onBindViewHolder(h: RecyclerView.ViewHolder, position: Int) {
@@ -215,9 +220,17 @@ class AllAppsPanel(
                         vh.icon.setImageDrawable(null)
                     }
                     vh.itemView.setOnClickListener { onLaunch(r.app, vh.itemView) }
-                    vh.itemView.setOnLongClickListener { menu(r.app, vh.itemView); true }
+                    vh.itemView.setOnLongClickListener {
+                        PressBeam.release(vh.itemView)
+                        menu(r.app, vh.itemView)
+                        true
+                    }
                 }
             }
+        }
+
+        override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
+            if (holder is AppVH) PressBeam.clear(holder.itemView)
         }
         inner class HeaderVH(v: View) : RecyclerView.ViewHolder(v) {
             val box: View = v.findViewById(R.id.headerBox)

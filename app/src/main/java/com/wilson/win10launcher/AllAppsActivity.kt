@@ -197,11 +197,20 @@ class AllAppsActivity : AppCompatActivity() {
             return if (viewType == 0) {
                 HeaderVH(inf.inflate(R.layout.item_header, parent, false))
             } else {
-                AppVH(inf.inflate(R.layout.item_app, parent, false))
+                AppVH(inf.inflate(R.layout.item_app, parent, false)).also { vh ->
+                    vh.itemView.setOnTouchListener { v, e ->
+                        PressBeam.onTouch(v, vh.icon, e, prefs.accentColor)
+                        false
+                    }
+                }
             }
         }
 
         override fun getItemCount() = rows.size
+
+        override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
+            if (holder is AppVH) PressBeam.clear(holder.itemView)
+        }
 
         override fun onBindViewHolder(h: RecyclerView.ViewHolder, position: Int) {
             when (val r = rows[position]) {
@@ -262,7 +271,11 @@ class AllAppsActivity : AppCompatActivity() {
                     vh.itemView.setOnClickListener {
                         if (tapLaunches) launchApp(r.app, vh.itemView) else onAppClick(r.app)
                     }
-                    vh.itemView.setOnLongClickListener { onAppLongClick(r.app, vh.itemView); true }
+                    vh.itemView.setOnLongClickListener {
+                        PressBeam.release(vh.itemView)
+                        onAppLongClick(r.app, vh.itemView)
+                        true
+                    }
                 }
             }
         }
