@@ -192,7 +192,6 @@ class AllAppsPanel(
                             val app = vh.app ?: return@onTouch
                             menu(app, v)
                         }
-                        false
                     }
                 }
             }

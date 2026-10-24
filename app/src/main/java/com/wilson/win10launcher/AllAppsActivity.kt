@@ -204,7 +204,6 @@ class AllAppsActivity : AppCompatActivity() {
                             val app = vh.app ?: return@onTouch
                             onAppLongClick(app, v)
                         }
-                        false
                     }
                 }
             }
