@@ -107,6 +107,9 @@ class MainActivity : AppCompatActivity() {
             }
         })
         grid.adapter = adapter
+        grid.setItemViewCacheSize(24)
+        grid.setHasFixedSize(true)
+        grid.setDrawingCacheEnabled(true)
         grid.addOnItemTouchListener(organizeDrag())
         grid.addOnItemTouchListener(swipeAllApps())
 

@@ -86,6 +86,9 @@ class AllAppsActivity : AppCompatActivity() {
         rv = findViewById(R.id.appsList)
         rv.layoutManager = LinearLayoutManager(this)
         rv.adapter = adapter
+        rv.setItemViewCacheSize(30)
+        rv.setHasFixedSize(true)
+        rv.setDrawingCacheEnabled(true)
         adapter.submit(buildSections(all, true))
 
         findViewById<View>(R.id.root).setBackgroundColor(if (prefs.glassHome) android.graphics.Color.TRANSPARENT else prefs.bgColor())
