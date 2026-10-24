@@ -15,6 +15,8 @@ import android.widget.Button
 import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
+import android.view.animation.DecelerateInterpolator
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.Lifecycle
 import androidx.recyclerview.widget.RecyclerView
@@ -24,6 +26,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var prefs: Prefs
     private lateinit var adapter: TileAdapter
     private lateinit var grid: RecyclerView
+    private lateinit var pager: View
+    private lateinit var allAppsPage: View
+    private lateinit var appsPanel: AllAppsPanel
+    private var drawerOpen = false
     private lateinit var editBanner: TextView
     private lateinit var editBtn: Button
     private val cols = Tile.GRID
@@ -83,6 +89,16 @@ class MainActivity : AppCompatActivity() {
 
         adapter = TileAdapter(this, prefs) { handle(it) }
         grid = findViewById(R.id.tileGrid)
+        pager = findViewById(R.id.pager)
+        allAppsPage = findViewById(R.id.allAppsPage)
+        allAppsPage.visibility = View.INVISIBLE
+        appsPanel = AllAppsPanel(this, allAppsPage, prefs, onLaunch = { launchFromDrawer(it) }) {
+            refresh()
+        }
+        appsPanel.bind()
+        pager.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            placeDrawer()
+        }
         editBanner = findViewById(R.id.editBanner)
         editBtn = findViewById(R.id.editBtn)
         grid.layoutManager = TileLayoutManager(
@@ -114,19 +130,23 @@ class MainActivity : AppCompatActivity() {
         grid.setHasFixedSize(true)
         grid.setDrawingCacheEnabled(true)
         grid.addOnItemTouchListener(organizeDrag())
-        grid.addOnItemTouchListener(swipeAllApps())
+        grid.addOnItemTouchListener(swipeAllApps(true))
+        appsPanel.list.addOnItemTouchListener(swipeAllApps(false))
 
         editBtn.setOnClickListener {
             adapter.editMode = !adapter.editMode
             applyChrome()
         }
-        findViewById<View>(R.id.allAppsBtn).setOnClickListener {
-            slideTo(Intent(this, AllAppsActivity::class.java))
-        }
+        findViewById<View>(R.id.allAppsBtn).setOnClickListener { settleDrawer(true) }
         findViewById<View>(R.id.settingsBtn).setOnClickListener {
             slideTo(Intent(this, SettingsActivity::class.java))
         }
         if (savedInstanceState?.getBoolean("edit") == true) adapter.editMode = true
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (drawerOpen || pager.translationX != 0f) settleDrawer(false)
+            }
+        })
         refresh()
     }
 
@@ -137,15 +157,11 @@ class MainActivity : AppCompatActivity() {
         // Swipe-home should show Start immediately. A return wave leaves the
         // bottom tiles folded until the animation catches up.
         val home = intent.action == Intent.ACTION_MAIN && intent.hasCategory(Intent.CATEGORY_HOME)
-        val alreadyShowing = lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
-        if (home && alreadyShowing) {
-            // The system gesture already moves this window. A second reset
-            // or fade is the flicker.
-            quietHome = true
-            PageTurn.noSystemAnim(this)
-            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return
-        }
         if (home) {
+            snapDrawerClosed()
+            PageTurn.noSystemAnim(this)
+            // Still on this screen. Don't rebuild or fade it.
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return
             leave = Leave.NONE
             featherToken++
             adapter.featherHold = false
@@ -161,6 +177,11 @@ class MainActivity : AppCompatActivity() {
             it.allowBungee = false
             it.cancelSpring()
         }
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (leave == Leave.NONE) snapDrawerClosed()
     }
 
     override fun onPause() {
@@ -333,10 +354,11 @@ class MainActivity : AppCompatActivity() {
     private fun dp(n: Int): Int =
         (n * resources.displayMetrics.density).toInt()
 
-    /** Flat slide, tracked with the finger. No rotation, so the tiles cannot ghost. */
-    private fun swipeAllApps() = object : RecyclerView.SimpleOnItemTouchListener() {
+    /** Flat slide. All Apps is the next page, so it follows the finger. No second animation. */
+    private fun swipeAllApps(fromStart: Boolean) = object : RecyclerView.SimpleOnItemTouchListener() {
         private var downRawX = 0f
         private var downRawY = 0f
+        private var origin = 0f
         private var dragging = false
 
         override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
@@ -345,14 +367,18 @@ class MainActivity : AppCompatActivity() {
                 MotionEvent.ACTION_DOWN -> {
                     downRawX = e.rawX
                     downRawY = e.rawY
+                    origin = pager.translationX
                     dragging = false
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = e.rawX - downRawX
                     val dy = e.rawY - downRawY
-                    if (dx < -dp(12) && kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.2f) {
+                    val left = fromStart && dx < -dp(8) && kotlin.math.abs(dx) > kotlin.math.abs(dy)
+                    val right = !fromStart && dx > dp(8) && kotlin.math.abs(dx) > kotlin.math.abs(dy)
+                    if (left || right) {
                         dragging = true
-                        PageTurn.trackSlide(page(), dx.coerceAtMost(0f))
+                        pager.animate().cancel()
+                        moveDrawer(origin + dx)
                         return true
                     }
                 }
@@ -362,23 +388,76 @@ class MainActivity : AppCompatActivity() {
 
         override fun onTouchEvent(rv: RecyclerView, e: MotionEvent) {
             if (!dragging) return
-            val w = rv.width.toFloat().coerceAtLeast(1f)
-            val dx = (e.rawX - downRawX).coerceAtMost(0f)
-            val page = page()
+            val w = pageWidth()
             when (e.actionMasked) {
-                MotionEvent.ACTION_MOVE -> PageTurn.trackSlide(page, dx)
+                MotionEvent.ACTION_MOVE -> moveDrawer(origin + (e.rawX - downRawX))
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     dragging = false
-                    val commit = e.actionMasked == MotionEvent.ACTION_UP &&
-                        dx < -w * 0.18f && leave == Leave.NONE
-                    page.animate().cancel()
-                    page.translationX = 0f
-                    if (!commit) return
-                    leave = Leave.SLIDE
-                    startActivity(PageTurn.quiet(Intent(this@MainActivity, AllAppsActivity::class.java)))
-                    PageTurn.noSystemAnim(this@MainActivity)
+                    val shown = -pager.translationX
+                    val open = if (e.actionMasked == MotionEvent.ACTION_CANCEL) drawerOpen
+                    else if (origin == 0f) shown > w * 0.18f
+                    else shown > w * 0.82f
+                    settleDrawer(open)
                 }
             }
+        }
+    }
+
+    private fun pageWidth(): Float = pager.width.toFloat().coerceAtLeast(1f)
+
+    private fun placeDrawer() {
+        val w = pager.width
+        if (w <= 0) return
+        allAppsPage.translationX = w.toFloat()
+        if (allAppsPage.visibility != View.VISIBLE) allAppsPage.visibility = View.VISIBLE
+        if (!drawerOpen && pager.translationX == 0f) return
+        if (drawerOpen) pager.translationX = -w.toFloat()
+    }
+
+    private fun moveDrawer(x: Float) {
+        val w = pageWidth()
+        allAppsPage.translationX = w
+        pager.translationX = x.coerceIn(-w, 0f)
+    }
+
+    private fun settleDrawer(open: Boolean) {
+        val w = pageWidth()
+        drawerOpen = open
+        if (!open) appsPanel.hideKeyboard()
+        allAppsPage.translationX = w
+        pager.animate().cancel()
+        pager.animate()
+            .translationX(if (open) -w else 0f)
+            .setDuration(160L)
+            .setInterpolator(DecelerateInterpolator())
+            .start()
+    }
+
+    private fun snapDrawerClosed() {
+        if (!::pager.isInitialized) return
+        if (!drawerOpen && pager.translationX == 0f) return
+        pager.animate().cancel()
+        pager.translationX = 0f
+        drawerOpen = false
+        if (::appsPanel.isInitialized) appsPanel.hideKeyboard()
+    }
+
+    private fun launchFromDrawer(app: AppList.App) {
+        val i = if (Tile.isClock(app.pkg, app.cls)) {
+            Tile.clockIntent(this)
+        } else {
+            Intent(Intent.ACTION_MAIN).apply {
+                component = ComponentName(app.pkg, app.cls)
+                addCategory(Intent.CATEGORY_LAUNCHER)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+            }
+        }
+        try {
+            startActivity(PageTurn.quiet(i), PageTurn.appOptions(this))
+            PageTurn.noSystemAnim(this)
+            prefs.noteLaunch(app.pkg)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Can't open ${app.label}", Toast.LENGTH_SHORT).show()
         }
     }
 

@@ -3,69 +3,90 @@
     android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:clipChildren="false">
+    android:clipChildren="true">
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/tileGrid"
+    <!-- Start and All Apps are one strip. The finger moves the strip, not a second activity. -->
+    <FrameLayout
+        android:id="@+id/pager"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:clipChildren="false"
-        android:clipToPadding="false"
-        android:paddingStart="8dp"
-        android:paddingTop="8dp"
-        android:paddingEnd="8dp"
-        android:paddingBottom="72dp"
-        android:scrollbars="vertical" />
+        android:clipChildren="false">
 
-    <TextView
-        android:id="@+id/editBanner"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="top"
-        android:fontFamily="sans-serif-light"
-        android:paddingStart="16dp"
-        android:paddingTop="10dp"
-        android:paddingEnd="16dp"
-        android:paddingBottom="8dp"
-        android:text="Drag tiles to move. Tap a tile to resize or unpin."
-        android:textSize="14sp"
-        android:visibility="gone" />
+        <FrameLayout
+            android:id="@+id/startPage"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipChildren="false">
 
-    <LinearLayout
-        android:id="@+id/dock"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom|end"
-        android:orientation="horizontal"
-        android:padding="8dp">
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/tileGrid"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipChildren="false"
+                android:clipToPadding="false"
+                android:paddingStart="8dp"
+                android:paddingTop="8dp"
+                android:paddingEnd="8dp"
+                android:paddingBottom="72dp"
+                android:scrollbars="vertical" />
 
-        <Button
-            android:id="@+id/editBtn"
-            style="?attr/borderlessButtonStyle"
-            android:layout_width="wrap_content"
-            android:layout_height="48dp"
-            android:minWidth="48dp"
-            android:text="EDIT"
-            android:textColor="?android:attr/textColorPrimary"
-            android:textSize="13sp" />
+            <TextView
+                android:id="@+id/editBanner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top"
+                android:fontFamily="sans-serif-light"
+                android:paddingStart="16dp"
+                android:paddingTop="10dp"
+                android:paddingEnd="16dp"
+                android:paddingBottom="8dp"
+                android:text="Drag tiles to move. Tap a tile to resize or unpin."
+                android:textSize="14sp"
+                android:visibility="gone" />
 
-        <Button
-            android:id="@+id/allAppsBtn"
-            style="?attr/borderlessButtonStyle"
-            android:layout_width="wrap_content"
-            android:layout_height="48dp"
-            android:minWidth="48dp"
-            android:text="ALL APPS"
-            android:textColor="?android:attr/textColorPrimary"
-            android:textSize="13sp" />
+            <LinearLayout
+                android:id="@+id/dock"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom|end"
+                android:orientation="horizontal"
+                android:padding="8dp">
 
-        <Button
-            android:id="@+id/settingsBtn"
-            style="?attr/borderlessButtonStyle"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:text="⚙"
-            android:textColor="?android:attr/textColorPrimary"
-            android:textSize="20sp" />
-    </LinearLayout>
+                <Button
+                    android:id="@+id/editBtn"
+                    style="?attr/borderlessButtonStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="48dp"
+                    android:minWidth="48dp"
+                    android:text="EDIT"
+                    android:textColor="?android:attr/textColorPrimary"
+                    android:textSize="13sp" />
+
+                <Button
+                    android:id="@+id/allAppsBtn"
+                    style="?attr/borderlessButtonStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="48dp"
+                    android:minWidth="48dp"
+                    android:text="ALL APPS"
+                    android:textColor="?android:attr/textColorPrimary"
+                    android:textSize="13sp" />
+
+                <Button
+                    android:id="@+id/settingsBtn"
+                    style="?attr/borderlessButtonStyle"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:text="⚙"
+                    android:textColor="?android:attr/textColorPrimary"
+                    android:textSize="20sp" />
+            </LinearLayout>
+        </FrameLayout>
+
+        <include
+            android:id="@+id/allAppsPage"
+            layout="@layout/activity_all_apps"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+    </FrameLayout>
 </FrameLayout>
