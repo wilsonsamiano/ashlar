@@ -17,6 +17,7 @@ import android.graphics.drawable.ColorDrawable
 import android.view.HapticFeedbackConstants
 import android.widget.LinearLayout
 import android.widget.PopupWindow
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import android.view.animation.DecelerateInterpolator
@@ -567,7 +568,8 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(4), 0, dp(4))
         }
-        val popup = PopupWindow(col, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, false)
+        val scroll = ScrollView(this).apply { isVerticalScrollBarEnabled = false }
+        val popup = PopupWindow(scroll, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, false)
         for (label in labels) {
             col.addView(TextView(this).apply {
                 text = label
@@ -580,14 +582,51 @@ class MainActivity : AppCompatActivity() {
                 }
             })
         }
+        scroll.addView(col)
         // Not focusable, so the finger that opened the menu is still tracked.
         popup.setBackgroundDrawable(ColorDrawable(if (prefs.darkTheme) 0xFF2B2B2B.toInt() else 0xFFF2F2F2.toInt()))
         popup.elevation = dp(8).toFloat()
         popup.isOutsideTouchable = true
+        popup.isClippingEnabled = true
         popup.setOnDismissListener { if (optionsPopup == popup) optionsPopup = null }
         optionsPopup = popup
-        popup.showAsDropDown(anchor)
+        placeMenu(popup, scroll, anchor)
         if (!adapter.editMode) armEditHold(anchor, t)
+    }
+
+    /** Drop the menu under the tile, or above it when the bottom of the screen would cut it off. */
+    private fun placeMenu(popup: PopupWindow, content: View, anchor: View) {
+        val widthSpec = View.MeasureSpec.makeMeasureSpec(resources.displayMetrics.widthPixels, View.MeasureSpec.AT_MOST)
+        val col = (content as? ScrollView)?.getChildAt(0) ?: content
+        col.measure(widthSpec, View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+        val menuW = col.measuredWidth.coerceAtLeast(dp(160))
+        val menuH = col.measuredHeight
+        val loc = IntArray(2)
+        anchor.getLocationOnScreen(loc)
+        val root = window.decorView
+        val rootLoc = IntArray(2)
+        root.getLocationOnScreen(rootLoc)
+        val frame = android.graphics.Rect()
+        root.getWindowVisibleDisplayFrame(frame)
+        val margin = dp(8)
+        val topLimit = frame.top + margin
+        val bottomLimit = frame.bottom - margin
+        val leftLimit = frame.left + margin
+        val rightLimit = frame.right - margin
+        val below = loc[1] + anchor.height
+        val spaceBelow = bottomLimit - below
+        val spaceAbove = loc[1] - topLimit
+        val showAbove = menuH > spaceBelow && spaceAbove > spaceBelow
+        val room = (if (showAbove) spaceAbove else spaceBelow).coerceAtLeast(dp(48))
+        val height = menuH.coerceAtMost(room)
+        popup.width = menuW.coerceAtMost(rightLimit - leftLimit)
+        popup.height = height
+        var x = loc[0] - rootLoc[0]
+        val maxX = rightLimit - rootLoc[0] - popup.width
+        if (x > maxX) x = maxX
+        if (x < leftLimit - rootLoc[0]) x = leftLimit - rootLoc[0]
+        val y = if (showAbove) loc[1] - rootLoc[1] - height else below - rootLoc[1]
+        popup.showAtLocation(root, android.view.Gravity.NO_GRAVITY, x, y.coerceAtLeast(topLimit - rootLoc[1]))
     }
 
     private fun armEditHold(view: View, tile: Tile) {
