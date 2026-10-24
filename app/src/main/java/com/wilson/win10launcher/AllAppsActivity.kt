@@ -72,7 +72,7 @@ class AllAppsActivity : AppCompatActivity() {
         titleBar.text = if (pickMode) "Tap an app to pin it" else "All apps"
         titleBar.setTextColor(prefs.fgColor())
 
-        all = (AppList.load(packageManager) + AppList.App(Tile.CLOCK_PKG, Tile.CLOCK_CLS, "Clock"))
+        all = (AppList.get(packageManager) + AppList.App(Tile.CLOCK_PKG, Tile.CLOCK_CLS, "Clock"))
             .sortedWith(compareBy({ it.label.lowercase() }, { it.pkg }))
         prefs.ensureAppBaseline(all.map { it.pkg })
         adapter = AppsAdapter(
@@ -88,7 +88,7 @@ class AllAppsActivity : AppCompatActivity() {
         rv.adapter = adapter
         rv.setItemViewCacheSize(30)
         rv.setHasFixedSize(true)
-        rv.setDrawingCacheEnabled(true)
+        (rv.layoutManager as LinearLayoutManager).initialPrefetchItemCount = 8
         adapter.submit(buildSections(all, true))
 
         findViewById<View>(R.id.root).setBackgroundColor(if (prefs.glassHome) android.graphics.Color.TRANSPARENT else prefs.bgColor())
@@ -141,18 +141,11 @@ class AllAppsActivity : AppCompatActivity() {
 
     private fun installTime(pkg: String): Long {
         if (pkg == packageName) return 0L
-        return try {
-            val info = if (android.os.Build.VERSION.SDK_INT >= 33) {
-                packageManager.getPackageInfo(pkg, android.content.pm.PackageManager.PackageInfoFlags.of(0))
-            } else {
-                @Suppress("DEPRECATION")
-                packageManager.getPackageInfo(pkg, 0)
-            }
-            info.firstInstallTime
-        } catch (e: Exception) {
-            0L
-        }
+        installedAt[pkg]?.let { return it }
+        return 0L
     }
+
+    private val installedAt = HashMap<String, Long>()
 
     private fun showLetterPicker() {
         val letters = all.map {
@@ -314,7 +307,7 @@ class AllAppsActivity : AppCompatActivity() {
     }
 
     private fun reloadApps() {
-        all = (AppList.load(packageManager) + AppList.App(Tile.CLOCK_PKG, Tile.CLOCK_CLS, "Clock"))
+        all = (AppList.get(packageManager) + AppList.App(Tile.CLOCK_PKG, Tile.CLOCK_CLS, "Clock"))
             .sortedWith(compareBy({ it.label.lowercase() }, { it.pkg }))
         val q = findViewById<EditText>(R.id.searchBox).text?.toString()?.trim()?.lowercase().orEmpty()
         val filtered = if (q.isEmpty()) all else all.filter { it.label.lowercase().contains(q) }
@@ -357,10 +350,7 @@ class AllAppsActivity : AppCompatActivity() {
             recreate()
             return
         }
-        if (!turnedAway) {
-            reloadApps()
-            return
-        }
+        if (!turnedAway) return
         turnedAway = false
         PageTurn.featherReturn(rv, featherX, featherY)
         rv.postDelayed({ if (!isFinishing) reloadApps() }, 1000L)

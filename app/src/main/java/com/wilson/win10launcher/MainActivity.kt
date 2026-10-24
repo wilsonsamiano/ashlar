@@ -16,6 +16,7 @@ import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.Lifecycle
 import androidx.recyclerview.widget.RecyclerView
 
 class MainActivity : AppCompatActivity() {
@@ -32,6 +33,8 @@ class MainActivity : AppCompatActivity() {
     private var featherY = 0f
     private var featherToken = 0
     private var appliedDark = true
+    /** Home pressed while Start was already the screen on top. Don't animate it. */
+    private var quietHome = false
     private val timeTick = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             // A clock rewrite during a turn rebuilds the tile texture mid-spin.
@@ -71,7 +74,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         prefs = Prefs(this)
-        prefs.ensureAppBaseline(AppList.load(packageManager).map { it.pkg })
+        prefs.ensureAppBaseline(AppList.get(packageManager).map { it.pkg })
         appliedDark = prefs.darkTheme
         setTheme(if (appliedDark) R.style.Theme_Win10_Dark else R.style.Theme_Win10_Light)
         super.onCreate(savedInstanceState)
@@ -134,6 +137,14 @@ class MainActivity : AppCompatActivity() {
         // Swipe-home should show Start immediately. A return wave leaves the
         // bottom tiles folded until the animation catches up.
         val home = intent.action == Intent.ACTION_MAIN && intent.hasCategory(Intent.CATEGORY_HOME)
+        val alreadyShowing = lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        if (home && alreadyShowing) {
+            // The system gesture already moves this window. A second reset
+            // or fade is the flicker.
+            quietHome = true
+            PageTurn.noSystemAnim(this)
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return
+        }
         if (home) {
             leave = Leave.NONE
             featherToken++
@@ -153,12 +164,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
-        if (leave != Leave.TURN && leave != Leave.FEATHER && leave != Leave.SLIDE) {
-            val page = page()
-            page.animate().cancel()
-            page.translationX = 0f
-            page.rotationY = 0f
+        if (leave == Leave.NONE) {
+            super.onPause()
+            return
         }
+        quietHome = false
+        val page = page()
+        page.animate().cancel()
+        page.translationX = 0f
+        page.rotationY = 0f
+        page.alpha = 1f
         VistaGlass.clearCompositor(this)
         super.onPause()
     }
@@ -170,6 +185,16 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (quietHome && leave == Leave.NONE) {
+            quietHome = false
+            val page = page()
+            page.animate().cancel()
+            page.alpha = 1f
+            page.translationX = 0f
+            page.rotationY = 0f
+            return
+        }
+        quietHome = false
         val returning = leave
         if (returning == Leave.FEATHER) {
             featherToken++
@@ -347,14 +372,10 @@ class MainActivity : AppCompatActivity() {
                     val commit = e.actionMasked == MotionEvent.ACTION_UP &&
                         dx < -w * 0.18f && leave == Leave.NONE
                     page.animate().cancel()
-                    if (!commit) {
-                        page.animate().translationX(0f).setDuration(160L).start()
-                        return
-                    }
+                    page.translationX = 0f
+                    if (!commit) return
                     leave = Leave.SLIDE
-                    startActivity(PageTurn.quiet(
-                        Intent(this@MainActivity, AllAppsActivity::class.java).putExtra("tracked", true)
-                    ))
+                    startActivity(PageTurn.quiet(Intent(this@MainActivity, AllAppsActivity::class.java)))
                     PageTurn.noSystemAnim(this@MainActivity)
                 }
             }

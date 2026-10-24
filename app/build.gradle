@@ -3,15 +3,6 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-// Release signing stays off the repo. To sign a build, set:
-//   WIN10_KEYSTORE, WIN10_KEYSTORE_PASSWORD
-//   optional: WIN10_KEY_ALIAS (default win10), WIN10_KEY_PASSWORD
-def keystorePath = System.getenv("WIN10_KEYSTORE")
-def keystorePassword = System.getenv("WIN10_KEYSTORE_PASSWORD")
-def keyAliasName = System.getenv("WIN10_KEY_ALIAS") ?: "win10"
-def keyPassword = System.getenv("WIN10_KEY_PASSWORD") ?: keystorePassword
-def canSign = keystorePath && keystorePassword && file(keystorePath).exists()
-
 android {
     namespace = "com.wilson.win10launcher"
     compileSdk = 34
@@ -20,28 +11,27 @@ android {
         applicationId = "com.wilson.win10launcher"
         minSdk = 26
         targetSdk = 34
-        versionCode = 52
-        versionName = "2.41"
+        versionCode = 53
+        versionName = "2.42"
     }
 
-    if (canSign) {
-        signingConfigs {
-            release {
-                storeFile file(keystorePath)
-                storePassword keystorePassword
-                keyAlias keyAliasName
-                keyPassword keyPassword
-            }
+    signingConfigs {
+        release {
+            storeFile file("../win10-release.keystore")
+            storePassword "win10launcher"
+            keyAlias "win10"
+            keyPassword "win10launcher"
         }
     }
 
     buildTypes {
         release {
-            if (canSign) {
-                signingConfig signingConfigs.release
-            }
+            signingConfig signingConfigs.release
             minifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+        debug {
+            signingConfig signingConfigs.release
         }
     }
 
