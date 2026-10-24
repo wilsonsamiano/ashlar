@@ -108,14 +108,13 @@ class AllAppsActivity : AppCompatActivity() {
 
     private fun buildSections(apps: List<AppList.App>, grouped: Boolean): List<Row> {
         val rows = mutableListOf<Row>()
-        val body = if (!grouped) apps else {
+        if (grouped) {
             val fresh = apps.filter { prefs.isNewApp(it.pkg) }
                 .sortedByDescending { installTime(it.pkg) }
             val used = apps.filter { !prefs.isNewApp(it.pkg) && prefs.launchCount(it.pkg) > 0 }
                 .sortedWith(compareByDescending<AppList.App> { prefs.launchCount(it.pkg) }
                     .thenBy { it.label.lowercase() })
                 .take(prefs.topAppCount)
-            val skip = (fresh + used).map { it.pkg + "\n" + it.cls }.toSet()
             if (fresh.isNotEmpty()) {
                 rows.add(Row.Header("New", null, rows.size))
                 fresh.forEach { rows.add(Row.Item(it)) }
@@ -124,10 +123,9 @@ class AllAppsActivity : AppCompatActivity() {
                 rows.add(Row.Header("Most used", null, rows.size))
                 used.forEach { rows.add(Row.Item(it)) }
             }
-            apps.filter { (it.pkg + "\n" + it.cls) !in skip }
         }
         var lastLetter = '\u0000'
-        for (app in body) {
+        for (app in apps) {
             val letter = app.label.firstOrNull()?.uppercaseChar() ?: '#'
             val bucket = if (letter.isLetter()) letter else '#'
             if (bucket != lastLetter) {

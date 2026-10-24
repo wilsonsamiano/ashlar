@@ -94,13 +94,12 @@ class AllAppsPanel(
 
     private fun buildSections(apps: List<AppList.App>, grouped: Boolean): List<Row> {
         val rows = mutableListOf<Row>()
-        val body = if (!grouped) apps else {
+        if (grouped) {
             val fresh = apps.filter { prefs.isNewApp(it.pkg) }
             val used = apps.filter { !prefs.isNewApp(it.pkg) && prefs.launchCount(it.pkg) > 0 }
                 .sortedWith(compareByDescending<AppList.App> { prefs.launchCount(it.pkg) }
                     .thenBy { it.label.lowercase() })
                 .take(prefs.topAppCount)
-            val skip = (fresh + used).map { it.pkg + "\n" + it.cls }.toSet()
             if (fresh.isNotEmpty()) {
                 rows.add(Row.Header("New", null))
                 fresh.forEach { rows.add(Row.Item(it)) }
@@ -109,10 +108,9 @@ class AllAppsPanel(
                 rows.add(Row.Header("Most used", null))
                 used.forEach { rows.add(Row.Item(it)) }
             }
-            apps.filter { (it.pkg + "\n" + it.cls) !in skip }
         }
         var last = '\u0000'
-        for (app in body) {
+        for (app in apps) {
             val letter = app.label.firstOrNull()?.uppercaseChar() ?: '#'
             val bucket = if (letter.isLetter()) letter else '#'
             if (bucket != last) {
