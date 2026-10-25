@@ -23,7 +23,7 @@ import java.net.URL
 object Updater {
 
     private const val RELEASES =
-        "https://api.github.com/repos/wilsonsamiano/win10-launcher/releases?per_page=20"
+        "https://api.github.com/repos/wilsonsamiano/ashlar/releases?per_page=20"
 
     data class Remote(
         val versionCode: Int,
