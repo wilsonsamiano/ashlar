@@ -93,8 +93,7 @@ class AllAppsActivity : AppCompatActivity() {
 
         findViewById<View>(R.id.root).setBackgroundColor(if (prefs.glassHome) android.graphics.Color.TRANSPARENT else prefs.bgColor())
         val search = findViewById<EditText>(R.id.searchBox)
-        search.setTextColor(prefs.fgColor())
-        search.setHintTextColor(if (prefs.darkTheme) 0xFF888888.toInt() else 0xFF666666.toInt())
+        paintSearchField(search, prefs.fgColor())
         search.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -104,6 +103,7 @@ class AllAppsActivity : AppCompatActivity() {
                 adapter.submit(buildSections(filtered, q.isEmpty()))
             }
         })
+        reloadApps()
     }
 
     private fun buildSections(apps: List<AppList.App>, grouped: Boolean): List<Row> {
@@ -320,11 +320,14 @@ class AllAppsActivity : AppCompatActivity() {
     }
 
     private fun reloadApps() {
-        all = (AppList.get(packageManager) + AppList.App(Tile.CLOCK_PKG, Tile.CLOCK_CLS, "Clock"))
-            .sortedWith(compareBy({ it.label.lowercase() }, { it.pkg }))
-        val q = findViewById<EditText>(R.id.searchBox).text?.toString()?.trim()?.lowercase().orEmpty()
-        val filtered = if (q.isEmpty()) all else all.filter { it.label.lowercase().contains(q) }
-        adapter.submit(buildSections(filtered, q.isEmpty()))
+        AppList.refreshAsync(packageManager) { fresh ->
+            if (isFinishing || isDestroyed) return@refreshAsync
+            all = (fresh + AppList.App(Tile.CLOCK_PKG, Tile.CLOCK_CLS, "Clock"))
+                .sortedWith(compareBy({ it.label.lowercase() }, { it.pkg }))
+            val q = findViewById<EditText>(R.id.searchBox).text?.toString()?.trim()?.lowercase().orEmpty()
+            val filtered = if (q.isEmpty()) all else all.filter { it.label.lowercase().contains(q) }
+            adapter.submit(buildSections(filtered, q.isEmpty()))
+        }
     }
 
     private fun launchApp(app: AppList.App, view: View) {
@@ -363,10 +366,11 @@ class AllAppsActivity : AppCompatActivity() {
             recreate()
             return
         }
-        if (!turnedAway) return
+        val cameBack = turnedAway
         turnedAway = false
-        PageTurn.featherReturn(rv, featherX, featherY)
-        rv.postDelayed({ if (!isFinishing) reloadApps() }, 1000L)
+        reloadOnResume = false
+        if (cameBack) PageTurn.featherReturn(rv, featherX, featherY)
+        rv.post { if (!isFinishing) reloadApps() }
     }
 
     private var closing = false

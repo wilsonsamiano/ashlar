@@ -73,6 +73,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val packages = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (::appsPanel.isInitialized) appsPanel.reload()
+        }
+    }
+
     override fun onStart() {
         super.onStart()
         val filter = IntentFilter(Intent.ACTION_TIME_TICK).apply {
@@ -85,6 +91,17 @@ class MainActivity : AppCompatActivity() {
             @Suppress("UnspecifiedRegisterReceiverFlag")
             registerReceiver(timeTick, filter)
         }
+        val pkgs = IntentFilter(Intent.ACTION_PACKAGE_ADDED).apply {
+            addAction(Intent.ACTION_PACKAGE_REMOVED)
+            addAction(Intent.ACTION_PACKAGE_CHANGED)
+            addDataScheme("package")
+        }
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(packages, pkgs, Context.RECEIVER_EXPORTED)
+        } else {
+            @Suppress("UnspecifiedRegisterReceiverFlag")
+            registerReceiver(packages, pkgs)
+        }
         if (prefs.themeMode == "sun") {
             Daylight.refresh(this) {
                 if (!isFinishing && prefs.darkTheme != appliedDark) recreate()
@@ -94,6 +111,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStop() {
         unregisterReceiver(timeTick)
+        unregisterReceiver(packages)
         super.onStop()
     }
 
@@ -272,6 +290,7 @@ class MainActivity : AppCompatActivity() {
             Leave.NONE -> if (!PageTurn.animating()) PageTurn.flatten(grid)
         }
         leave = Leave.NONE
+        if (::appsPanel.isInitialized) appsPanel.reload()
     }
 
     private fun page(): View = findViewById(android.R.id.content)

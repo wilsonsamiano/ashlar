@@ -39,8 +39,7 @@ class AllAppsPanel(
         title.text = "All apps"
         title.setTextColor(prefs.fgColor())
         page.setBackgroundColor(if (prefs.glassHome) 0xF206121C.toInt() else prefs.bgColor())
-        search.setTextColor(prefs.fgColor())
-        search.setHintTextColor(if (prefs.darkTheme) 0xFF888888.toInt() else 0xFF666666.toInt())
+        paintSearchField(search, prefs.fgColor())
         search.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -60,13 +59,33 @@ class AllAppsPanel(
         preloadIcons()
     }
 
+    /** Pull a fresh app list. Newly installed apps land in New until they are opened. */
+    fun reload() {
+        AppList.refreshAsync(activity.packageManager) { fresh ->
+            if (activity.isDestroyed) return@refreshAsync
+            val next = (fresh + AppList.App(Tile.CLOCK_PKG, Tile.CLOCK_CLS, "Clock"))
+                .sortedWith(compareBy({ it.label.lowercase() }, { it.pkg }))
+            val q = search.text?.toString().orEmpty()
+            val trimmed = q.trim().lowercase()
+            val filtered = if (trimmed.isEmpty()) next else next.filter { it.label.lowercase().contains(trimmed) }
+            val rows = buildSections(filtered, trimmed.isEmpty())
+            val changed = next != all || rows != adapter.current()
+            all = next
+            if (changed) adapter.submit(rows)
+            preloadIcons()
+        }
+    }
+
     private fun preloadIcons() {
         val apps = all
         val pm = activity.packageManager
+        val missing = apps.filter { app ->
+            !Tile.isClock(app.pkg, app.cls) && !icons.containsKey(app.pkg + "\n" + app.cls)
+        }
+        if (missing.isEmpty()) return
         Thread {
             var n = 0
-            for (app in apps) {
-                if (Tile.isClock(app.pkg, app.cls)) continue
+            for (app in missing) {
                 val key = app.pkg + "\n" + app.cls
                 if (icons.containsKey(key)) continue
                 try {
@@ -76,7 +95,7 @@ class AllAppsPanel(
                 n++
                 if (n % 24 == 0) activity.runOnUiThread { if (!activity.isDestroyed) adapter.notifyDataSetChanged() }
             }
-            activity.runOnUiThread { if (!activity.isDestroyed) adapter.notifyDataSetChanged() }
+            if (n > 0) activity.runOnUiThread { if (!activity.isDestroyed) adapter.notifyDataSetChanged() }
         }.start()
     }
 
@@ -239,6 +258,31 @@ class AllAppsPanel(
             val icon: ImageView = v.findViewById(R.id.appIcon)
             val label: TextView = v.findViewById(R.id.appLabel)
             var app: AppList.App? = null
+        }
+    }
+}
+
+/** Search field that stays readable. The stock box is white, and dark theme text is white too. */
+internal fun paintSearchField(search: android.widget.EditText, ink: Int) {
+    val lightInk = android.graphics.Color.red(ink) > 160 &&
+        android.graphics.Color.green(ink) > 160 &&
+        android.graphics.Color.blue(ink) > 160
+    val field = if (lightInk) 0xFF1A1A1A.toInt() else 0xFFFFFFFF.toInt()
+    val hint = if (lightInk) 0xFFC6C6C6.toInt() else 0xFF555555.toInt()
+    val line = if (lightInk) 0xFF6A6A6A.toInt() else 0xFFBDBDBD.toInt()
+    val d = search.resources.displayMetrics.density
+    search.setTextColor(ink)
+    search.setHintTextColor(hint)
+    search.backgroundTintList = null
+    search.background = android.graphics.drawable.GradientDrawable().apply {
+        setColor(field)
+        cornerRadius = 2f * d
+        setStroke((1f * d).toInt().coerceAtLeast(1), line)
+    }
+    if (android.os.Build.VERSION.SDK_INT >= 29) {
+        search.textCursorDrawable = android.graphics.drawable.GradientDrawable().apply {
+            setColor(ink)
+            setSize((2f * d).toInt().coerceAtLeast(2), (18f * d).toInt())
         }
     }
 }
