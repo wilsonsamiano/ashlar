@@ -289,7 +289,7 @@ class MainActivity : AppCompatActivity() {
                     grid.postDelayed({
                         adapter.featherHold = false
                         PageTurn.flatten(grid)
-                    }, 1100L)
+                    }, 1600L)
                 }
             }
             Leave.NONE -> if (!PageTurn.animating()) PageTurn.flatten(grid)

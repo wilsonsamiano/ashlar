@@ -53,8 +53,8 @@ object PageTurn {
     private const val FEATHER_OUT = 320L
     private const val FEATHER_IN = 380L
     /** Series stagger: one item after another, not all at once. Capped so a long list still finishes in time. */
-    private const val SERIES_MS = 30L
-    private const val SERIES_CAP_MS = 250L
+    private const val SERIES_MS = 90L
+    private const val SERIES_CAP_MS = 720L
     private fun seriesDelay(index: Int): Long = (index * SERIES_MS).coerceAtMost(SERIES_CAP_MS)
 
     /** Left hinge. Negative: Android's positive rotationY is the mirror of WP7. */
@@ -215,7 +215,7 @@ object PageTurn {
             }
             val hinge = pageHinge(grid)
             val faces = facesOf(grid)
-            val others = faces.filter { it !== tapped }
+            val others = visualOrder(faces.filter { it !== tapped }, bottomFirst = false)
             val tiles = ArrayList<TileSpin>(faces.size)
             for ((i, face) in others.withIndex()) {
                 hingeFace(face, hinge)
@@ -266,9 +266,8 @@ object PageTurn {
             }
             val ordered = ArrayList<View>(faces.size)
             if (tappedFace != null) ordered.add(tappedFace)
-            for (face in faces.reversed()) {
-                if (face !== tappedFace) ordered.add(face)
-            }
+            val rest = if (tappedFace != null) faces.filter { it !== tappedFace } else faces
+            ordered.addAll(visualOrder(rest, bottomFirst = true))
             val tiles = ArrayList<TileSpin>(ordered.size)
             for ((i, face) in ordered.withIndex()) {
                 hingeFace(face, hinge)
@@ -302,10 +301,14 @@ object PageTurn {
     fun drawerStaggerIn(list: RecyclerView) {
         val density = list.resources.displayMetrics.density
         val offset = 64f * density
+        val faces = ArrayList<View>()
         for (i in 0 until list.childCount) {
             val child = list.getChildAt(i)
             val face = if (child.id == R.id.tileFace) child
                 else child.findViewById<View>(R.id.tileFace) ?: child
+            faces.add(face)
+        }
+        for ((i, face) in visualOrder(faces, bottomFirst = false).withIndex()) {
             face.animate().cancel()
             face.translationX = offset
             face.alpha = 0f
@@ -314,7 +317,7 @@ object PageTurn {
                 .alpha(1f)
                 .setStartDelay(seriesDelay(i))
                 .setDuration(SLIDE_MS)
-                .setInterpolator(EASE_OUT)
+                .setInterpolator(DECEL)
                 .start()
         }
     }
@@ -328,18 +331,21 @@ object PageTurn {
     fun drawerStaggerOut(list: RecyclerView) {
         val density = list.resources.displayMetrics.density
         val offset = 64f * density
-        val count = list.childCount
-        for (i in 0 until count) {
+        val faces = ArrayList<View>()
+        for (i in 0 until list.childCount) {
             val child = list.getChildAt(i)
             val face = if (child.id == R.id.tileFace) child
                 else child.findViewById<View>(R.id.tileFace) ?: child
+            faces.add(face)
+        }
+        for ((i, face) in visualOrder(faces, bottomFirst = true).withIndex()) {
             face.animate().cancel()
             face.animate()
                 .translationX(offset)
                 .alpha(0f)
-                .setStartDelay(seriesDelay(count - 1 - i))
+                .setStartDelay(seriesDelay(i))
                 .setDuration(SLIDE_MS)
-                .setInterpolator(EASE_OUT)
+                .setInterpolator(DECEL)
                 .start()
         }
     }
@@ -352,23 +358,27 @@ object PageTurn {
      * Runs only on the settle to closed, not while the finger drags.
      */
     fun startStaggerInOnDrawerClose(grid: RecyclerView) {
-        val density = grid.resources.displayMetrics.density
-        val offset = -64f * density
-        val count = grid.childCount
-        for (i in 0 until count) {
+        // Real hinge return, bottom-first, not slide+fade: tiles swing
+        // from -72 degrees back to flat, in visual bottom-up order.
+        val hinge = pageHinge(grid)
+        val faces = ArrayList<View>()
+        for (i in 0 until grid.childCount) {
             val child = grid.getChildAt(i)
             val face = if (child.id == R.id.tileFace) child
                 else child.findViewById<View>(R.id.tileFace) ?: child
-            face.animate().cancel()
-            face.translationX = offset
-            face.alpha = 0f
-            face.animate()
-                .translationX(0f)
-                .alpha(1f)
-                .setStartDelay(seriesDelay(count - 1 - i))
-                .setDuration(SLIDE_MS)
-                .setInterpolator(EASE_OUT)
-                .start()
+            faces.add(face)
+        }
+        val tiles = ArrayList<TileSpin>(faces.size)
+        for ((i, face) in visualOrder(faces, bottomFirst = true).withIndex()) {
+            hingeFace(face, hinge)
+            face.translationX = 0f
+            face.alpha = 1f
+            tiles.add(TileSpin(face, seriesDelay(i)))
+        }
+        if (tiles.isNotEmpty()) {
+            playWave(tiles, OPEN, 0f, FEATHER_IN, easeOut = true) {
+                for (tile in tiles) releaseLayer(tile.face)
+            }
         }
     }
 
@@ -381,6 +391,8 @@ object PageTurn {
             face.animate().cancel()
             face.translationX = 0f
             face.alpha = 1f
+            face.rotationY = 0f
+            releaseLayer(face)
         }
     }
 
@@ -393,10 +405,36 @@ object PageTurn {
      * rows are positioned but before they are drawn, so the first drawn
      * frame is already at the stagger start, not the jumped-in state.
      */
+    /** Letter pick: new section rows swing in on the left hinge, top to
+     *  bottom, in series, after the jump lands. Not a flat slide+fade,
+     *  which is why v71's letter motion did not read like the video. */
+    fun letterStaggerIn(list: RecyclerView) {
+        val hinge = pageHinge(list)
+        val faces = ArrayList<View>()
+        for (i in 0 until list.childCount) {
+            val child = list.getChildAt(i)
+            val face = if (child.id == R.id.tileFace) child
+                else child.findViewById<View>(R.id.tileFace) ?: child
+            faces.add(face)
+        }
+        val tiles = ArrayList<TileSpin>(faces.size)
+        for ((i, face) in visualOrder(faces, bottomFirst = false).withIndex()) {
+            hingeFace(face, hinge)
+            face.translationX = 0f
+            face.alpha = 1f
+            tiles.add(TileSpin(face, seriesDelay(i)))
+        }
+        if (tiles.isNotEmpty()) {
+            playWave(tiles, OPEN, 0f, FEATHER_IN, easeOut = true) {
+                for (tile in tiles) releaseLayer(tile.face)
+            }
+        }
+    }
+
     fun staggerInAfterLayout(list: RecyclerView) {
         val obs = list.viewTreeObserver
         if (!obs.isAlive) {
-            drawerStaggerIn(list)
+            letterStaggerIn(list)
             return
         }
         obs.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
@@ -404,7 +442,7 @@ object PageTurn {
                 if (list.viewTreeObserver.isAlive) {
                     list.viewTreeObserver.removeOnPreDrawListener(this)
                 }
-                drawerStaggerIn(list)
+                letterStaggerIn(list)
                 return true
             }
         })
@@ -499,6 +537,32 @@ object PageTurn {
         }
     }
 
+    /** Visual order, not child order. Child order is adapter order, which
+     *  for a grid with wide/medium/small tiles does not match where tiles
+     *  actually sit on screen, so a reversed-child wave looks random.
+     *  Sort by on-screen centre Y, then X, so bottom-first really is
+     *  bottom row first, left to right, working up, and top-first is
+     *  the reverse. */
+    private fun visualOrder(faces: List<View>, bottomFirst: Boolean): List<View> {
+        val withPos = faces.map { face ->
+            val loc = IntArray(2)
+            face.getLocationOnScreen(loc)
+            val cx = loc[0] + face.width / 2f
+            val cy = loc[1] + face.height / 2f
+            Triple(face, cx, cy)
+        }
+        val sorted = if (bottomFirst) {
+            withPos.sortedWith(compareByDescending<Triple<View, Float, Float>> { it.third }.thenBy { it.second })
+        } else {
+            withPos.sortedWith(compareBy<Triple<View, Float, Float>> { it.third }.thenBy { it.second })
+        }
+        return sorted.map { it.first }
+    }
+
+    private fun releaseLayer(face: View) {
+        face.setLayerType(View.LAYER_TYPE_NONE, null)
+    }
+
     private class TileSpin(val face: View, val delay: Long)
 
     /**
@@ -537,6 +601,7 @@ object PageTurn {
         waveFaces = faces
         later(maxDelay + ms) {
             waveFaces = emptyList()
+            for (face in faces) releaseLayer(face)
             end?.invoke()
         }
     }
@@ -676,13 +741,14 @@ object PageTurn {
         page.cameraDistance = w * 4.8f
     }
 
-    /** Rasterize the hardware layer now, so the turn only has to spin a texture. */
+    /** Optimization: set a hardware layer, but do NOT buildLayer() it here.
+     *  Building a layer for every tile up front rasterizes every tile on
+     *  the UI thread right before the turn, which is the lag spike on a
+     *  slow tablet. The RenderThread rasterizes on first use instead, and
+     *  the layer is released when the wave ends. */
     private fun warm(view: View) {
         if (view.layerType != View.LAYER_TYPE_HARDWARE) {
             view.setLayerType(View.LAYER_TYPE_HARDWARE, null)
-        }
-        if (view.isAttachedToWindow && view.width > 0 && view.height > 0) {
-            view.buildLayer()
         }
     }
 
