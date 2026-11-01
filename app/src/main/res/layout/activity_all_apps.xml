@@ -7,7 +7,8 @@
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="48dp"
+        android:gravity="center_vertical"
         android:orientation="horizontal">
 
         <ImageView
@@ -22,9 +23,9 @@
         <TextView
             android:id="@+id/titleBar"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="48dp"
             android:layout_gravity="center_vertical"
-            android:layout_marginTop="12dp"
+            android:gravity="center_vertical"
             android:layout_weight="1"
             android:fontFamily="sans-serif-light"
             android:textSize="24sp" />
@@ -35,6 +36,7 @@
         android:layout_width="match_parent"
         android:layout_height="56dp"
         android:layout_margin="8dp"
+        android:elevation="8dp"
         android:background="@android:drawable/edit_text"
         android:fontFamily="sans-serif-light"
         android:hint="Search apps"
@@ -50,9 +52,13 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:clipChildren="false"
-        android:clipToPadding="false"
+        android:clipChildren="true"
+        android:clipToPadding="true"
+        android:fadingEdge="vertical"
+        android:fadingEdgeLength="32dp"
         android:paddingStart="16dp"
+        android:paddingTop="8dp"
         android:paddingBottom="16dp"
+        android:requiresFadingEdge="vertical"
         android:scrollbars="vertical" />
 </LinearLayout>
