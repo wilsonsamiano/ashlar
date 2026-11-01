@@ -495,6 +495,32 @@ object PageTurn {
     }
 
     /** Distance from the tapped tile. The tapped tile itself waits 0. */
+    /** Visual order, not child order. Child order is adapter order, which
+     *  for a grid with wide/medium/small tiles does not match where tiles
+     *  actually sit on screen, so a reversed-child wave looks random.
+     *  Sort by on-screen centre Y, then X, so bottom-first really is
+     *  bottom row first, left to right, working up, and top-first is
+     *  the reverse. */
+    private fun visualOrder(faces: List<View>, bottomFirst: Boolean): List<View> {
+        val withPos = faces.map { face ->
+            val loc = IntArray(2)
+            face.getLocationOnScreen(loc)
+            val cx = loc[0] + face.width / 2f
+            val cy = loc[1] + face.height / 2f
+            Triple(face, cx, cy)
+        }
+        val sorted = if (bottomFirst) {
+            withPos.sortedWith(compareByDescending<Triple<View, Float, Float>> { it.third }.thenBy { it.second })
+        } else {
+            withPos.sortedWith(compareBy<Triple<View, Float, Float>> { it.third }.thenBy { it.second })
+        }
+        return sorted.map { it.first }
+    }
+
+    private fun releaseLayer(face: View) {
+        face.setLayerType(View.LAYER_TYPE_NONE, null)
+    }
+
     private class TileSpin(val face: View, val delay: Long)
 
     /**

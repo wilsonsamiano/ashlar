@@ -538,9 +538,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
         drawerAnim = ValueAnimator.ofFloat(drawerX, target).apply {
-            // WP7 panorama slide, not a generic decelerate: 300ms ExpoEase exponent 6.
+            // Strip settle matches the row slides: Decelerate, not ExpoEase
+            // exponent 6, or the strip and the rows move on different curves.
+            // Hinge turns still use ExpoEase.
             duration = 300L
-            interpolator = PageTurn.easeOut()
+            interpolator = android.view.animation.DecelerateInterpolator()
             addUpdateListener { applyDrawer(it.animatedValue as Float) }
             start()
         }
