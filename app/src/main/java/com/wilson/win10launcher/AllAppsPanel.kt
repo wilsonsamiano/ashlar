@@ -183,7 +183,7 @@ class AllAppsPanel(
                 // Series entrance for the picked section, like the drawer
                 // entrance, not an instant jump: visible rows slide in
                 // from the right one after another after the jump lands.
-                list.post { PageTurn.drawerStaggerIn(list) }
+                PageTurn.staggerInAfterLayout(list)
             }
             dialog.dismiss()
         }

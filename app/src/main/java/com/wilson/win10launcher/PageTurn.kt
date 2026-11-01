@@ -384,6 +384,32 @@ object PageTurn {
         }
     }
 
+    /**
+     * Series entrance after a scroll jump, e.g. a letter pick.
+     * scrollToPositionWithOffset only requests a layout; a plain post()
+     * runs before that layout, so it would stagger the old rows and the
+     * new section would still appear as an instant jump. A one-shot
+     * pre-draw listener runs during the layout traversal, after the new
+     * rows are positioned but before they are drawn, so the first drawn
+     * frame is already at the stagger start, not the jumped-in state.
+     */
+    fun staggerInAfterLayout(list: RecyclerView) {
+        val obs = list.viewTreeObserver
+        if (!obs.isAlive) {
+            drawerStaggerIn(list)
+            return
+        }
+        obs.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                if (list.viewTreeObserver.isAlive) {
+                    list.viewTreeObserver.removeOnPreDrawListener(this)
+                }
+                drawerStaggerIn(list)
+                return true
+            }
+        })
+    }
+
     fun slideAwayRight(page: View, then: () -> Unit) {
         val w = widthOf(page)
         leaveSlide(page, w, then)
