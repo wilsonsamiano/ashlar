@@ -435,6 +435,10 @@ class MainActivity : AppCompatActivity() {
                         dragging = true
                         drawerDragging = true
                         drawerAnim?.cancel()
+                        // Finger tracking must start from flat tiles, not mid-wave:
+                        // cancel any settle series/hinge so the page follows the finger exactly.
+                        if (::appsPanel.isInitialized) PageTurn.resetDrawerStagger(appsPanel.list)
+                        if (::grid.isInitialized) PageTurn.resetStartStagger(grid)
                         applyDrawer(origin + dx)
                         return true
                     }

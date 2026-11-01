@@ -382,6 +382,20 @@ object PageTurn {
         }
     }
 
+    /** Cancel any drawer row stagger/hinge and leave rows flat and opaque, for a finger drag. */
+    fun resetDrawerStagger(list: RecyclerView) {
+        for (i in 0 until list.childCount) {
+            val child = list.getChildAt(i)
+            val face = if (child.id == R.id.tileFace) child
+                else child.findViewById<View>(R.id.tileFace) ?: child
+            face.animate().cancel()
+            face.translationX = 0f
+            face.alpha = 1f
+            face.rotationY = 0f
+            releaseLayer(face)
+        }
+    }
+
     /** Cancel any Start tile mirror stagger and leave the tiles flat and opaque, for a quick reopen. */
     fun resetStartStagger(grid: RecyclerView) {
         for (i in 0 until grid.childCount) {
