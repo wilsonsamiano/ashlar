@@ -6,12 +6,8 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.View
-import android.view.ViewGroup
 import android.view.ViewTreeObserver
-import android.view.animation.DecelerateInterpolator
 import android.view.animation.Interpolator
-import androidx.recyclerview.widget.RecyclerView
-import kotlin.math.hypot
 
 /**
  * Windows Phone 7 motions, taken from the open-source phone toolkit
@@ -26,11 +22,9 @@ import kotlin.math.hypot
  * so the angle is negative — 2.0 turned the page backwards. One hardware layer,
  * so the tile grid cannot draw a second copy.
  *
- * Tile tap is the same turnstile, not a separate door per tile. Every tile
- * hinges on the left edge of the screen (and the vertical middle), so they
- * stay one page. They are still separate views, so the gaps stay open.
- * The tapped tile presses in, then starts the turn. The others follow a
- * short beat behind.
+ * Tile tap is the same turnstile, not a separate door per tile. The
+ * tapped tile presses in, then the whole page turns together as one
+ * sheet, hinged on the left edge. No per-tile series, no per-tile hinge.
  *
  * App list (arrow, or swipe left on Start): not a turnstile. The videos show
  * a flat horizontal slide of the whole screen. No rotation.
@@ -49,14 +43,6 @@ object PageTurn {
     private const val SLIDE_MS = 300L
     private const val EXPO = 6f
     private const val PUSH_MS = 120L
-    /** Long on purpose so a slow screen still paints the whole turn. */
-    private const val FEATHER_OUT = 320L
-    private const val FEATHER_IN = 380L
-    /** Series stagger: one item after another, not all at once. Capped so a long list still finishes in time. */
-    private const val SERIES_MS = 90L
-    private const val SERIES_CAP_MS = 720L
-    private fun seriesDelay(index: Int): Long = (index * SERIES_MS).coerceAtMost(SERIES_CAP_MS)
-
     /** Left hinge. Negative: Android's positive rotationY is the mirror of WP7. */
     private const val OPEN = -72f
 
@@ -65,34 +51,14 @@ object PageTurn {
 
     /** WP7 slide ease, for the drawer settle. Same ExpoEase exponent 6 as PageTurn.slide. */
     fun easeOut(): Interpolator = EASE_OUT
-    private val DECEL = DecelerateInterpolator()
     private val handler = Handler(Looper.getMainLooper())
     private var laterToken = 0
     private var laterRunnable: Runnable? = null
-    private var waveFaces: List<View> = emptyList()
 
-    /** True while a turn, slide, or tile wave is in flight. Clocks must not invalidate then. */
-    fun animating(): Boolean = laterRunnable != null
+    
 
-    fun owns(face: View): Boolean = waveFaces.any { it === face }
-
-    /** Drop a tile that left the screen so it cannot come back mid-turn. */
-    fun drop(face: View) {
-        if (owns(face)) waveFaces = waveFaces.filter { it !== face }
-        releaseFace(face)
-    }
-
-    /** Flatten every visible tile that is not in the current wave. */
-    fun flatten(grid: RecyclerView) {
-        for (i in 0 until grid.childCount) {
-            val face = grid.getChildAt(i).findViewById<View>(R.id.tileFace) ?: continue
-            if (!owns(face)) releaseFace(face)
-        }
-    }
-
-    /** Left hinge of the screen, and the vertical middle. Same point for every tile. */
-    private class Hinge(val x: Float, val y: Float, val pageW: Float)
-
+    
+    
     fun noSystemAnim(activity: Activity) {
         if (Build.VERSION.SDK_INT >= 34) {
             activity.overrideActivityTransition(
@@ -159,417 +125,26 @@ object PageTurn {
         spin(page, OPEN, OUT_MS, easeOut = false, hold = true, then = then)
     }
 
-    /**
-     * Tile tap, in series, not all at once. The tapped tile presses in, then
-     * the other tiles swing out one after another in child order, each
-     * hinged on the left edge of the screen so they still read as one page
-     * turning. The tapped tile waits, then swings last, alone, and only then
-     * does [then] run and the app open. This is the WP7 application-entry
-     * motion: unrelated tiles flip out first, the selected tile last.
-     */
-    fun featherOut(grid: RecyclerView, tapped: View, then: () -> Unit) {
-        val page = sheetOf(grid)
-        cancelMotion()
-        for (face in facesOf(grid)) {
-            if (face !== tapped) releaseFace(face)
-        }
-        unclip(page)
-        tapped.animate().cancel()
-        tapped.animate()
-            .scaleX(0.9f)
-            .scaleY(0.9f)
-            .setStartDelay(0L)
-            .setDuration(PUSH_MS)
-            .setInterpolator(DECEL)
-            .start()
-        later(PUSH_MS) {
-            if (!page.isAttachedToWindow) {
-                unlock(page)
-                freeze(grid, false)
-                then()
-                return@later
-            }
-            val hinge = pageHinge(grid)
-            val faces = facesOf(grid)
-            val others = visualOrder(faces.filter { it !== tapped }, bottomFirst = false)
-            val tiles = ArrayList<TileSpin>(faces.size)
-            for ((i, face) in others.withIndex()) {
-                hingeFace(face, hinge)
-                face.scaleX = 1f
-                face.scaleY = 1f
-                tiles.add(TileSpin(face, seriesDelay(i)))
-            }
-            // Tapped tile last, after every other tile has started.
-            val tappedFace = faces.firstOrNull { it === tapped } ?: tapped
-            hingeFace(tappedFace, hinge)
-            tappedFace.scaleX = 1f
-            tappedFace.scaleY = 1f
-            tiles.add(TileSpin(tappedFace, seriesDelay(others.size)))
-            lock(page)
-            freeze(grid, true)
-            playWave(tiles, 0f, OPEN, FEATHER_OUT, easeOut = false) {
-                freeze(grid, false)
-                then()
-            }
-        }
-    }
+    
+    
 
-    /**
-     * Return home: the exact reverse of the exit, in series. Exit was
-     * others in child order, tapped last. So return is tapped first, then
-     * others in reverse child order. Not simply reverse child order: with
-     * tiles A, B, C and B tapped, exit is A, C, B, so return must be
-     * B, C, A, not C, B, A. ox/oy are the tapped tile's centre, set at
-     * tap time; the closest face to them is the tapped tile. If no face
-     * is close, fall back to reverse child order.
-     */
-    fun featherReturn(grid: RecyclerView, ox: Float, oy: Float) {
-        val page = sheetOf(grid)
-        onPreDraw(page) {
-            cancelMotion()
-            for (face in facesOf(grid)) releaseFace(face)
-            unclip(page)
-            lock(page)
-            freeze(grid, true)
-            val hinge = pageHinge(grid)
-            val faces = facesOf(grid)
-            val tappedFace = faces.minByOrNull { face ->
-                val loc = IntArray(2)
-                face.getLocationOnScreen(loc)
-                val cx = loc[0] + face.width / 2f
-                val cy = loc[1] + face.height / 2f
-                hypot((cx - ox).toDouble(), (cy - oy).toDouble())
-            }
-            val ordered = ArrayList<View>(faces.size)
-            if (tappedFace != null) ordered.add(tappedFace)
-            val rest = if (tappedFace != null) faces.filter { it !== tappedFace } else faces
-            ordered.addAll(visualOrder(rest, bottomFirst = true))
-            val tiles = ArrayList<TileSpin>(ordered.size)
-            for ((i, face) in ordered.withIndex()) {
-                hingeFace(face, hinge)
-                tiles.add(TileSpin(face, seriesDelay(i)))
-            }
-            playWave(tiles, OPEN, 0f, FEATHER_IN, easeOut = true) {
-                freeze(grid, false)
-                unlock(page)
-            }
-        }
-    }
-
-    fun featherReset(grid: RecyclerView) {
-        val page = sheetOf(grid)
-        val extra = waveFaces
-        cancelMotion()
-        for (face in extra) releaseFace(face)
-        for (face in facesOf(grid)) releaseFace(face)
-        release(page)
-        unlock(page)
-        freeze(grid, false)
-    }
-
-    /**
-     * App drawer entrance, in series. Visible All Apps rows slide in from
-     * the right one after another, top to bottom, while the drawer strip
-     * itself slides. Only the visible rows stagger; scrolling later does
-     * not re-run it. Call at the same time as the strip settle, not after
-     * it, so the whole entrance still finishes in about 550ms.
-     */
-    fun drawerStaggerIn(list: RecyclerView) {
-        val density = list.resources.displayMetrics.density
-        val offset = 64f * density
-        val faces = ArrayList<View>()
-        for (i in 0 until list.childCount) {
-            val child = list.getChildAt(i)
-            val face = if (child.id == R.id.tileFace) child
-                else child.findViewById<View>(R.id.tileFace) ?: child
-            faces.add(face)
-        }
-        for ((i, face) in visualOrder(faces, bottomFirst = false).withIndex()) {
-            face.animate().cancel()
-            face.translationX = offset
-            face.alpha = 0f
-            face.animate()
-                .translationX(0f)
-                .alpha(1f)
-                .setStartDelay(seriesDelay(i))
-                .setDuration(SLIDE_MS)
-                .setInterpolator(DECEL)
-                .start()
-        }
-    }
-
-    /**
-     * App drawer close, in reverse series. Visible rows peel off last
-     * first, sliding right and fading, while the strip slides back. The
-     * next drawerStaggerIn resets translation and alpha, so a quick
-     * reopen is never left faded.
-     */
-    fun drawerStaggerOut(list: RecyclerView) {
-        val density = list.resources.displayMetrics.density
-        val offset = 64f * density
-        val faces = ArrayList<View>()
-        for (i in 0 until list.childCount) {
-            val child = list.getChildAt(i)
-            val face = if (child.id == R.id.tileFace) child
-                else child.findViewById<View>(R.id.tileFace) ?: child
-            faces.add(face)
-        }
-        for ((i, face) in visualOrder(faces, bottomFirst = true).withIndex()) {
-            face.animate().cancel()
-            face.animate()
-                .translationX(offset)
-                .alpha(0f)
-                .setStartDelay(seriesDelay(i))
-                .setDuration(SLIDE_MS)
-                .setInterpolator(DECEL)
-                .start()
-        }
-    }
-
-    /**
-     * Start tiles mirror series, on drawer close. The mirror of the drawer
-     * entrance: All Apps rows came in top to bottom, sliding from the
-     * right. Start tiles come back bottom to top, sliding from the left,
-     * one after another, 30ms apart capped at 250ms, 300ms ExpoEase.
-     * Runs only on the settle to closed, not while the finger drags.
-     */
-    fun startStaggerInOnDrawerClose(grid: RecyclerView) {
-        // Real hinge return, bottom-first, not slide+fade: tiles swing
-        // from -72 degrees back to flat, in visual bottom-up order.
-        val hinge = pageHinge(grid)
-        val faces = ArrayList<View>()
-        for (i in 0 until grid.childCount) {
-            val child = grid.getChildAt(i)
-            val face = if (child.id == R.id.tileFace) child
-                else child.findViewById<View>(R.id.tileFace) ?: child
-            faces.add(face)
-        }
-        val tiles = ArrayList<TileSpin>(faces.size)
-        for ((i, face) in visualOrder(faces, bottomFirst = true).withIndex()) {
-            hingeFace(face, hinge)
-            face.translationX = 0f
-            face.alpha = 1f
-            tiles.add(TileSpin(face, seriesDelay(i)))
-        }
-        if (tiles.isNotEmpty()) {
-            playWave(tiles, OPEN, 0f, FEATHER_IN, easeOut = true) {
-                for (tile in tiles) releaseLayer(tile.face)
-            }
-        }
-    }
-
-    /** Cancel any drawer row stagger/hinge and leave rows flat and opaque, for a finger drag. */
-    fun resetDrawerStagger(list: RecyclerView) {
-        for (i in 0 until list.childCount) {
-            val child = list.getChildAt(i)
-            val face = if (child.id == R.id.tileFace) child
-                else child.findViewById<View>(R.id.tileFace) ?: child
-            face.animate().cancel()
-            face.translationX = 0f
-            face.alpha = 1f
-            face.rotationY = 0f
-            releaseLayer(face)
-        }
-    }
-
-    /** Cancel any Start tile mirror stagger and leave the tiles flat and opaque, for a quick reopen. */
-    fun resetStartStagger(grid: RecyclerView) {
-        for (i in 0 until grid.childCount) {
-            val child = grid.getChildAt(i)
-            val face = if (child.id == R.id.tileFace) child
-                else child.findViewById<View>(R.id.tileFace) ?: child
-            face.animate().cancel()
-            face.translationX = 0f
-            face.alpha = 1f
-            face.rotationY = 0f
-            releaseLayer(face)
-        }
-    }
-
-    /**
-     * Series entrance after a scroll jump, e.g. a letter pick.
-     * scrollToPositionWithOffset only requests a layout; a plain post()
-     * runs before that layout, so it would stagger the old rows and the
-     * new section would still appear as an instant jump. A one-shot
-     * pre-draw listener runs during the layout traversal, after the new
-     * rows are positioned but before they are drawn, so the first drawn
-     * frame is already at the stagger start, not the jumped-in state.
-     */
-    /** Letter pick: new section rows swing in on the left hinge, top to
-     *  bottom, in series, after the jump lands. Not a flat slide+fade,
-     *  which is why v71's letter motion did not read like the video. */
-    fun letterStaggerIn(list: RecyclerView) {
-        val hinge = pageHinge(list)
-        val faces = ArrayList<View>()
-        for (i in 0 until list.childCount) {
-            val child = list.getChildAt(i)
-            val face = if (child.id == R.id.tileFace) child
-                else child.findViewById<View>(R.id.tileFace) ?: child
-            faces.add(face)
-        }
-        val tiles = ArrayList<TileSpin>(faces.size)
-        for ((i, face) in visualOrder(faces, bottomFirst = false).withIndex()) {
-            hingeFace(face, hinge)
-            face.translationX = 0f
-            face.alpha = 1f
-            tiles.add(TileSpin(face, seriesDelay(i)))
-        }
-        if (tiles.isNotEmpty()) {
-            playWave(tiles, OPEN, 0f, FEATHER_IN, easeOut = true) {
-                for (tile in tiles) releaseLayer(tile.face)
-            }
-        }
-    }
-
-    fun staggerInAfterLayout(list: RecyclerView) {
-        val obs = list.viewTreeObserver
-        if (!obs.isAlive) {
-            letterStaggerIn(list)
-            return
-        }
-        obs.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
-            override fun onPreDraw(): Boolean {
-                if (list.viewTreeObserver.isAlive) {
-                    list.viewTreeObserver.removeOnPreDrawListener(this)
-                }
-                letterStaggerIn(list)
-                return true
-            }
-        })
-    }
-
+    
+    
+    
+    
+    
+    
     fun slideAwayRight(page: View, then: () -> Unit) {
         val w = widthOf(page)
         leaveSlide(page, w, then)
     }
 
     
-    /** The page that owns the tiles, so the fold is one sheet instead of many layers. */
-    private fun sheetOf(grid: RecyclerView): View {
-        var v: View = grid
-        while (true) {
-            if (v.id == R.id.startPage || v.id == R.id.allAppsPage) return v
-            v = v.parent as? View ?: return grid
-        }
-    }
+    
 
-    private val locked = HashMap<View, Int>()
+    
 
-    /** Hold the page height so a taskbar inset cannot reflow tiles mid-fold. */
-    private fun lock(page: View) {
-        if (locked.containsKey(page)) return
-        val h = page.height
-        if (h <= 0) return
-        locked[page] = page.layoutParams.height
-        page.layoutParams.height = h
-    }
-
-    private fun unlock(page: View) {
-        val prev = locked.remove(page) ?: return
-        page.layoutParams.height = prev
-        page.requestLayout()
-    }
-
-    private fun freeze(grid: RecyclerView, on: Boolean) {
-        if (Build.VERSION.SDK_INT >= 29) grid.suppressLayout(on)
-        else @Suppress("DEPRECATION") grid.isLayoutFrozen = on
-    }
-
-    private fun pageHinge(grid: RecyclerView): Hinge {
-        val page = grid.rootView.findViewById<View>(android.R.id.content) ?: grid
-        val loc = IntArray(2)
-        page.getLocationOnScreen(loc)
-        val h = if (page.height > 0) page.height else grid.height
-        val w = if (page.width > 0) page.width.toFloat()
-        else grid.resources.displayMetrics.widthPixels.toFloat()
-        return Hinge(loc[0].toFloat(), loc[1] + h / 2f, w)
-    }
-
-    private fun facesOf(grid: RecyclerView): List<View> {
-        val out = ArrayList<View>(grid.childCount)
-        for (i in 0 until grid.childCount) {
-            val face = grid.getChildAt(i).findViewById<View>(R.id.tileFace) ?: continue
-            if (face.width > 0 && face.height > 0) out.add(face)
-        }
-        return out
-    }
-
-    /** Distance from the tapped tile. The tapped tile itself waits 0. */
-    /** Visual order, not child order. Child order is adapter order, which
-     *  for a grid with wide/medium/small tiles does not match where tiles
-     *  actually sit on screen, so a reversed-child wave looks random.
-     *  Sort by on-screen centre Y, then X, so bottom-first really is
-     *  bottom row first, left to right, working up, and top-first is
-     *  the reverse. */
-    private fun visualOrder(faces: List<View>, bottomFirst: Boolean): List<View> {
-        val withPos = faces.map { face ->
-            val loc = IntArray(2)
-            face.getLocationOnScreen(loc)
-            val cx = loc[0] + face.width / 2f
-            val cy = loc[1] + face.height / 2f
-            Triple(face, cx, cy)
-        }
-        val sorted = if (bottomFirst) {
-            withPos.sortedWith(compareByDescending<Triple<View, Float, Float>> { it.third }.thenBy { it.second })
-        } else {
-            withPos.sortedWith(compareBy<Triple<View, Float, Float>> { it.third }.thenBy { it.second })
-        }
-        return sorted.map { it.first }
-    }
-
-    private fun releaseLayer(face: View) {
-        face.setLayerType(View.LAYER_TYPE_NONE, null)
-    }
-
-    private class TileSpin(val face: View, val delay: Long)
-
-    /**
-     * One render-thread animator per tile. No per-frame listener, or the whole
-     * wave would fall back to the UI thread. The clock below only starts the
-     * next screen; it does not move the tiles.
-     */
-    private fun playWave(
-        tiles: List<TileSpin>,
-        from: Float,
-        to: Float,
-        ms: Long,
-        easeOut: Boolean,
-        end: (() -> Unit)?
-    ) {
-        if (tiles.isEmpty()) {
-            end?.invoke()
-            return
-        }
-        val ease = if (easeOut) EASE_OUT else EASE_IN
-        var maxDelay = 0L
-        val faces = ArrayList<View>(tiles.size)
-        for (t in tiles) {
-            if (t.delay > maxDelay) maxDelay = t.delay
-            val face = t.face
-            face.animate().cancel()
-            face.rotationY = from
-            face.animate()
-                .rotationY(to)
-                .setStartDelay(t.delay)
-                .setDuration(ms)
-                .setInterpolator(ease)
-                .start()
-            faces.add(face)
-        }
-        waveFaces = faces
-        later(maxDelay + ms) {
-            waveFaces = emptyList()
-            for (face in faces) releaseLayer(face)
-            end?.invoke()
-        }
-    }
-
-    private fun cancelMotion() {
-        cancelLater()
-        val faces = waveFaces
-        waveFaces = emptyList()
-        for (face in faces) releaseFace(face)
-    }
+    
 
     private fun cancelLater() {
         laterToken++
@@ -589,48 +164,7 @@ object PageTurn {
         handler.postDelayed(run, ms)
     }
 
-    private fun unclip(start: View) {
-        var p: View? = start
-        while (p is ViewGroup) {
-            p.clipChildren = false
-            p.clipToPadding = false
-            if (p.id == android.R.id.content) break
-            p = p.parent as? View
-        }
-    }
-
-    /** Same hinge as the whole-page turn, so the tiles stay one sheet. */
-    private fun hingeFace(face: View, hinge: Hinge) {
-        val loc = IntArray(2)
-        face.getLocationOnScreen(loc)
-        warm(face)
-        face.pivotX = hinge.x - loc[0]
-        face.pivotY = hinge.y - loc[1]
-        face.cameraDistance = hinge.pageW * 4.8f
-    }
-
-    private fun releaseFace(face: View) {
-        val clean = face.rotationX == 0f && face.rotationY == 0f &&
-            face.scaleX == 1f && face.scaleY == 1f &&
-            face.translationX == 0f && face.translationY == 0f &&
-            face.alpha == 1f &&
-            face.layerType == View.LAYER_TYPE_NONE
-        if (clean) return
-        face.animate().setStartDelay(0L)
-        face.animate().cancel()
-        face.rotationX = 0f
-        face.rotationY = 0f
-        face.scaleX = 1f
-        face.scaleY = 1f
-        face.translationX = 0f
-        face.translationY = 0f
-        face.alpha = 1f
-        if (face.width > 0 && face.height > 0) {
-            face.pivotX = face.width / 2f
-            face.pivotY = face.height / 2f
-        }
-        face.setLayerType(View.LAYER_TYPE_NONE, null)
-    }
+    
 
     private fun slide(
         page: View,

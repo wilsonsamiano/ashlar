@@ -46,11 +46,6 @@ class MainActivity : AppCompatActivity() {
     private val cols = Tile.GRID
     private enum class Leave { NONE, SLIDE, TURN, FEATHER }
     private var leave = Leave.NONE
-    private var featherX = 0f
-    private var featherY = 0f
-    private var featherToken = 0
-    /** The fold that opened an app was the All Apps list, not Start. */
-    private var featherFromDrawer = false
     private var appliedDark = true
     /** Home pressed while Start was already the screen on top. Don't animate it. */
     private var optionsPopup: PopupWindow? = null
@@ -65,13 +60,10 @@ class MainActivity : AppCompatActivity() {
     private val timeTick = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             // A clock rewrite during a turn rebuilds the tile texture mid-spin.
-            if (::adapter.isInitialized && ::grid.isInitialized
-                && !adapter.featherHold && !PageTurn.animating()
-            ) {
+            if (::adapter.isInitialized && ::grid.isInitialized) {
                 adapter.paintClocks(grid)
             }
             if (prefs.themeMode == "sun" && prefs.darkTheme != appliedDark && !isFinishing) recreate()
-            else if (::grid.isInitialized && !PageTurn.animating()) PageTurn.flatten(grid)
         }
     }
 
@@ -206,14 +198,9 @@ class MainActivity : AppCompatActivity() {
         if (home) {
             snapDrawerClosed()
             PageTurn.noSystemAnim(this)
-            featherFromDrawer = false
-            if (::appsPanel.isInitialized) PageTurn.featherReset(appsPanel.list)
             // Still on this screen. Don't rebuild or fade it.
             if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return
             leave = Leave.NONE
-            featherToken++
-            adapter.featherHold = false
-            PageTurn.featherReset(grid)
         }
         val page = page()
         page.animate().cancel()
@@ -265,11 +252,6 @@ class MainActivity : AppCompatActivity() {
         }
         quietHome = false
         val returning = leave
-        val fromDrawer = featherFromDrawer
-        if (returning == Leave.FEATHER && !fromDrawer) {
-            featherToken++
-            adapter.featherHold = true
-        }
         refresh()
         val page = page()
         when (returning) {
@@ -280,19 +262,9 @@ class MainActivity : AppCompatActivity() {
                 back.rotationY = 0f
             }
             Leave.TURN -> PageTurn.returnTurn(page)
-            Leave.FEATHER -> {
-                featherFromDrawer = false
-                if (fromDrawer) {
-                    PageTurn.featherReturn(appsPanel.list, featherX, featherY)
-                } else {
-                    PageTurn.featherReturn(grid, featherX, featherY)
-                    grid.postDelayed({
-                        adapter.featherHold = false
-                        PageTurn.flatten(grid)
-                    }, 1600L)
-                }
-            }
-            Leave.NONE -> if (!PageTurn.animating()) PageTurn.flatten(grid)
+            // Whole-page turnstile return, one sheet, no per-tile series.
+            Leave.FEATHER -> PageTurn.returnTurn(page)
+            Leave.NONE -> Unit
         }
         leave = Leave.NONE
         if (::appsPanel.isInitialized) appsPanel.reload()
@@ -379,7 +351,7 @@ class MainActivity : AppCompatActivity() {
         if (!same) {
             adapter.submit(next)
             grid.requestLayout()
-        } else if (!adapter.featherHold && !PageTurn.animating()) {
+        } else {
             adapter.paintClocks(grid)
         }
         applyChrome()
@@ -435,10 +407,7 @@ class MainActivity : AppCompatActivity() {
                         dragging = true
                         drawerDragging = true
                         drawerAnim?.cancel()
-                        // Finger tracking must start from flat tiles, not mid-wave:
-                        // cancel any settle series/hinge so the page follows the finger exactly.
-                        if (::appsPanel.isInitialized) PageTurn.resetDrawerStagger(appsPanel.list)
-                        if (::grid.isInitialized) PageTurn.resetStartStagger(grid)
+                        // Finger tracking: page follows the finger flat, no animation.
                         applyDrawer(origin + dx)
                         return true
                     }
@@ -525,22 +494,10 @@ class MainActivity : AppCompatActivity() {
         drawerOpen = open
         if (!open) appsPanel.hideKeyboard()
         drawerAnim?.cancel()
-        // Series entrance / reverse exit, at the same time as the strip
-        // slide, not after it. Finger dragging itself stays flat and
-        // follows the finger; this only runs on the settle to open/closed.
-        if (::appsPanel.isInitialized) {
-            if (open) {
-                if (::grid.isInitialized) PageTurn.resetStartStagger(grid)
-                PageTurn.drawerStaggerIn(appsPanel.list)
-            } else {
-                PageTurn.drawerStaggerOut(appsPanel.list)
-                if (::grid.isInitialized) PageTurn.startStaggerInOnDrawerClose(grid)
-            }
-        }
+        // v73: flat slide only. No per-row stagger, no per-tile hinge.
+        // Rows and tiles move with the strip, like the WP7 video.
         drawerAnim = ValueAnimator.ofFloat(drawerX, target).apply {
-            // Strip settle matches the row slides: Decelerate, not ExpoEase
-            // exponent 6, or the strip and the rows move on different curves.
-            // Hinge turns still use ExpoEase.
+            // Flat slide, 300ms Decelerate. Hinge turns still use ExpoEase.
             duration = 300L
             interpolator = android.view.animation.DecelerateInterpolator()
             addUpdateListener { applyDrawer(it.animatedValue as Float) }
@@ -569,26 +526,17 @@ class MainActivity : AppCompatActivity() {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
             }
         }
-        val loc = IntArray(2)
-        view.getLocationOnScreen(loc)
-        featherX = loc[0] + view.width / 2f
-        featherY = loc[1] + view.height / 2f
         leave = Leave.FEATHER
-        featherFromDrawer = true
-        val token = ++featherToken
-        PageTurn.featherOut(appsPanel.list, view) {
-            if (token != featherToken || leave != Leave.FEATHER) {
-                PageTurn.featherReset(appsPanel.list)
-                return@featherOut
-            }
+        // Whole-page turnstile, one sheet, no per-item series.
+        PageTurn.leaveTurn(page()) {
+            if (leave != Leave.FEATHER) return@leaveTurn
             try {
                 startActivity(PageTurn.quiet(i), PageTurn.appOptions(this))
                 PageTurn.noSystemAnim(this)
                 prefs.noteLaunch(app.pkg)
             } catch (e: Exception) {
                 leave = Leave.NONE
-                featherFromDrawer = false
-                PageTurn.featherReset(appsPanel.list)
+                PageTurn.returnTurn(page())
                 Toast.makeText(this, "Can't open ${app.label}", Toast.LENGTH_SHORT).show()
             }
         }
@@ -614,27 +562,30 @@ class MainActivity : AppCompatActivity() {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
             }
         }
-        val loc = IntArray(2)
-        view.getLocationOnScreen(loc)
-        featherX = loc[0] + view.width / 2f
-        featherY = loc[1] + view.height / 2f
         leave = Leave.FEATHER
-        val token = ++featherToken
-        PageTurn.featherOut(grid, view) {
-            if (token != featherToken || leave != Leave.FEATHER) {
-                PageTurn.flatten(grid)
-                return@featherOut
+        // Tapped tile presses in only, then the whole page turns together.
+        view.animate().cancel()
+        view.animate()
+            .scaleX(0.9f)
+            .scaleY(0.9f)
+            .setDuration(120L)
+            .setInterpolator(android.view.animation.DecelerateInterpolator())
+            .withEndAction {
+                if (leave != Leave.FEATHER) return@withEndAction
+                PageTurn.leaveTurn(page()) {
+                    if (leave != Leave.FEATHER) return@leaveTurn
+                    try {
+                        startActivity(PageTurn.quiet(i), PageTurn.appOptions(this))
+                        PageTurn.noSystemAnim(this)
+                        prefs.noteLaunch(t.pkg)
+                    } catch (e: Exception) {
+                        leave = Leave.NONE
+                        PageTurn.returnTurn(page())
+                        Diagnostics.note(this, "open ${t.pkg} failed: ${e.javaClass.simpleName}")
+                    }
+                }
             }
-            try {
-                startActivity(PageTurn.quiet(i), PageTurn.appOptions(this))
-                PageTurn.noSystemAnim(this)
-                prefs.noteLaunch(t.pkg)
-            } catch (e: Exception) {
-                leave = Leave.NONE
-                PageTurn.featherReset(grid)
-                Diagnostics.note(this, "open ${t.pkg} failed: ${e.javaClass.simpleName}")
-            }
-        }
+            .start()
     }
 
     private fun showOptions(t: Tile, anchor: View) {

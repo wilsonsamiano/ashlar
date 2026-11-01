@@ -180,10 +180,7 @@ class AllAppsPanel(
             val idx = adapter.current().indexOfFirst { it is Row.Header && it.letter == want }
             if (idx >= 0) {
                 (list.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(idx, 0)
-                // Series entrance for the picked section, like the drawer
-                // entrance, not an instant jump: visible rows slide in
-                // from the right one after another after the jump lands.
-                PageTurn.staggerInAfterLayout(list)
+                // v73: jump only, no per-row animation. Section lands with the list.
             }
             dialog.dismiss()
         }
