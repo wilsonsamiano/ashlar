@@ -239,11 +239,13 @@ object PageTurn {
     }
 
     /**
-     * Return home: the backward transition, in reverse series. The tile that
-     * swung out last swings back first, then the others in reverse order,
-     * each hinged on the left edge of the screen, back from -72 degrees to
-     * flat. Not a single simultaneous swing. ox/oy are kept for call-site
-     * compatibility; order is reverse child order, not distance.
+     * Return home: the exact reverse of the exit, in series. Exit was
+     * others in child order, tapped last. So return is tapped first, then
+     * others in reverse child order. Not simply reverse child order: with
+     * tiles A, B, C and B tapped, exit is A, C, B, so return must be
+     * B, C, A, not C, B, A. ox/oy are the tapped tile's centre, set at
+     * tap time; the closest face to them is the tapped tile. If no face
+     * is close, fall back to reverse child order.
      */
     fun featherReturn(grid: RecyclerView, ox: Float, oy: Float) {
         val page = sheetOf(grid)
@@ -254,9 +256,21 @@ object PageTurn {
             lock(page)
             freeze(grid, true)
             val hinge = pageHinge(grid)
-            val faces = facesOf(grid).reversed()
-            val tiles = ArrayList<TileSpin>(faces.size)
-            for ((i, face) in faces.withIndex()) {
+            val faces = facesOf(grid)
+            val tappedFace = faces.minByOrNull { face ->
+                val loc = IntArray(2)
+                face.getLocationOnScreen(loc)
+                val cx = loc[0] + face.width / 2f
+                val cy = loc[1] + face.height / 2f
+                hypot((cx - ox).toDouble(), (cy - oy).toDouble())
+            }
+            val ordered = ArrayList<View>(faces.size)
+            if (tappedFace != null) ordered.add(tappedFace)
+            for (face in faces.reversed()) {
+                if (face !== tappedFace) ordered.add(face)
+            }
+            val tiles = ArrayList<TileSpin>(ordered.size)
+            for ((i, face) in ordered.withIndex()) {
                 hingeFace(face, hinge)
                 tiles.add(TileSpin(face, seriesDelay(i)))
             }
