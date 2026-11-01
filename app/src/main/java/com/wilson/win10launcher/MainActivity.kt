@@ -525,8 +525,13 @@ class MainActivity : AppCompatActivity() {
         // slide, not after it. Finger dragging itself stays flat and
         // follows the finger; this only runs on the settle to open/closed.
         if (::appsPanel.isInitialized) {
-            if (open) PageTurn.drawerStaggerIn(appsPanel.list)
-            else PageTurn.drawerStaggerOut(appsPanel.list)
+            if (open) {
+                if (::grid.isInitialized) PageTurn.resetStartStagger(grid)
+                PageTurn.drawerStaggerIn(appsPanel.list)
+            } else {
+                PageTurn.drawerStaggerOut(appsPanel.list)
+                if (::grid.isInitialized) PageTurn.startStaggerInOnDrawerClose(grid)
+            }
         }
         drawerAnim = ValueAnimator.ofFloat(drawerX, target).apply {
             // WP7 panorama slide, not a generic decelerate: 300ms ExpoEase exponent 6.

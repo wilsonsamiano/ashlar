@@ -344,6 +344,46 @@ object PageTurn {
         }
     }
 
+    /**
+     * Start tiles mirror series, on drawer close. The mirror of the drawer
+     * entrance: All Apps rows came in top to bottom, sliding from the
+     * right. Start tiles come back bottom to top, sliding from the left,
+     * one after another, 30ms apart capped at 250ms, 300ms ExpoEase.
+     * Runs only on the settle to closed, not while the finger drags.
+     */
+    fun startStaggerInOnDrawerClose(grid: RecyclerView) {
+        val density = grid.resources.displayMetrics.density
+        val offset = -64f * density
+        val count = grid.childCount
+        for (i in 0 until count) {
+            val child = grid.getChildAt(i)
+            val face = if (child.id == R.id.tileFace) child
+                else child.findViewById<View>(R.id.tileFace) ?: child
+            face.animate().cancel()
+            face.translationX = offset
+            face.alpha = 0f
+            face.animate()
+                .translationX(0f)
+                .alpha(1f)
+                .setStartDelay(seriesDelay(count - 1 - i))
+                .setDuration(SLIDE_MS)
+                .setInterpolator(EASE_OUT)
+                .start()
+        }
+    }
+
+    /** Cancel any Start tile mirror stagger and leave the tiles flat and opaque, for a quick reopen. */
+    fun resetStartStagger(grid: RecyclerView) {
+        for (i in 0 until grid.childCount) {
+            val child = grid.getChildAt(i)
+            val face = if (child.id == R.id.tileFace) child
+                else child.findViewById<View>(R.id.tileFace) ?: child
+            face.animate().cancel()
+            face.translationX = 0f
+            face.alpha = 1f
+        }
+    }
+
     fun slideAwayRight(page: View, then: () -> Unit) {
         val w = widthOf(page)
         leaveSlide(page, w, then)
