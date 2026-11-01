@@ -55,7 +55,6 @@
 
         <activity
             android:name=".MainActivity"
-            android:screenOrientation="portrait"
             android:exported="true"
             android:launchMode="singleTask"
             android:stateNotNeeded="true"
@@ -69,14 +68,12 @@
 
         <activity
             android:name=".AllAppsActivity"
-            android:screenOrientation="portrait"
             android:exported="false"
             android:enableOnBackInvokedCallback="false"
             android:windowSoftInputMode="adjustPan" />
 
         <activity
             android:name=".SettingsActivity"
-            android:screenOrientation="portrait"
             android:exported="false"
             android:enableOnBackInvokedCallback="false" />
 

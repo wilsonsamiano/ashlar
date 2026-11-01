@@ -38,7 +38,6 @@ class AllAppsPanel(
         val title = page.findViewById<TextView>(R.id.titleBar)
         title.text = "All apps"
         title.setTextColor(prefs.fgColor())
-        page.findViewById<ImageView>(R.id.backArrow)?.imageTintList = android.content.res.ColorStateList.valueOf(prefs.fgColor())
         page.setBackgroundColor(if (prefs.glassHome) 0xF206121C.toInt() else prefs.bgColor())
         paintSearchField(search, prefs.fgColor())
         search.addTextChangedListener(object : TextWatcher {
@@ -178,10 +177,7 @@ class AllAppsPanel(
         grid.setOnItemClickListener { _, _, pos, _ ->
             val want = letters[pos]
             val idx = adapter.current().indexOfFirst { it is Row.Header && it.letter == want }
-            if (idx >= 0) {
-                (list.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(idx, 0)
-                // v73: jump only, no per-row animation. Section lands with the list.
-            }
+            if (idx >= 0) (list.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(idx, 0)
             dialog.dismiss()
         }
         dialog.show()

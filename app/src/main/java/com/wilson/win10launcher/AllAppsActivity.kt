@@ -71,10 +71,6 @@ class AllAppsActivity : AppCompatActivity() {
         val titleBar = findViewById<TextView>(R.id.titleBar)
         titleBar.text = if (pickMode) "Tap an app to pin it" else "All apps"
         titleBar.setTextColor(prefs.fgColor())
-        findViewById<ImageView>(R.id.backArrow)?.let { back ->
-            back.imageTintList = android.content.res.ColorStateList.valueOf(prefs.fgColor())
-            back.setOnClickListener { finish() }
-        }
 
         all = (AppList.get(packageManager) + AppList.App(Tile.CLOCK_PKG, Tile.CLOCK_CLS, "Clock"))
             .sortedWith(compareBy({ it.label.lowercase() }, { it.pkg }))
@@ -167,9 +163,7 @@ class AllAppsActivity : AppCompatActivity() {
             val want = letters[pos]
             val rows = adapter.current()
             val idx = rows.indexOfFirst { it is Row.Header && it.letter == want }
-            if (idx >= 0) {
-                (rv.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(idx, 0)
-            }
+            if (idx >= 0) (rv.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(idx, 0)
             dialog.dismiss()
         }
         dialog.show()
@@ -298,6 +292,9 @@ class AllAppsActivity : AppCompatActivity() {
 
     private var turnedAway = false
     private var reloadOnResume = false
+    private var featherX = 0f
+    private var featherY = 0f
+
     private fun pinApp(app: AppList.App) {
         prefs.addTile(Tile(app.pkg, app.cls, app.label, Tile.MEDIUM))
         Toast.makeText(this, "Pinned ${app.label}", Toast.LENGTH_SHORT).show()
@@ -345,16 +342,19 @@ class AllAppsActivity : AppCompatActivity() {
             }
         }
         turnedAway = true
-        // Whole-page turnstile, one sheet, no per-item series.
-        PageTurn.leaveTurn(findViewById(android.R.id.content)) {
-            if (!turnedAway) return@leaveTurn
+        val loc = IntArray(2)
+        view.getLocationOnScreen(loc)
+        featherX = loc[0] + view.width / 2f
+        featherY = loc[1] + view.height / 2f
+        PageTurn.featherOut(rv, view) {
+            if (!turnedAway) return@featherOut
             try {
                 startActivity(PageTurn.quiet(i), PageTurn.appOptions(this))
                 PageTurn.noSystemAnim(this)
                 prefs.noteLaunch(app.pkg)
             } catch (e: Exception) {
                 turnedAway = false
-                PageTurn.returnTurn(findViewById(android.R.id.content))
+                PageTurn.featherReset(rv)
                 Toast.makeText(this, "Can't open ${app.label}", Toast.LENGTH_SHORT).show()
             }
         }
@@ -369,7 +369,7 @@ class AllAppsActivity : AppCompatActivity() {
         val cameBack = turnedAway
         turnedAway = false
         reloadOnResume = false
-        if (cameBack) PageTurn.returnTurn(findViewById(android.R.id.content))
+        if (cameBack) PageTurn.featherReturn(rv, featherX, featherY)
         rv.post { if (!isFinishing) reloadApps() }
     }
 

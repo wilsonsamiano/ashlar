@@ -127,6 +127,9 @@ class TileAdapter(
             notifyDataSetChanged()
         }
 
+    /** Rebind must not flatten tiles while they are feathering back in. */
+    var featherHold: Boolean = false
+
     fun submit(tiles: List<Tile>) {
         items = if (editMode) tiles + listOf(null) else tiles
         notifyDataSetChanged()
@@ -168,6 +171,7 @@ class TileAdapter(
 
     /** Update the time on visible clock tiles without rebinding the whole grid. */
     fun paintClocks(grid: RecyclerView) {
+        if (featherHold) return
         for (n in 0 until grid.childCount) {
             val child = grid.getChildAt(n)
             val pos = grid.getChildAdapterPosition(child)
@@ -204,29 +208,16 @@ class TileAdapter(
         return vh
     }
 
-    // Whole-page turn only: a recycled tile just resets flat, no per-tile wave state.
-    private fun resetFace(face: android.view.View) {
-        face.animate().cancel()
-        face.rotationX = 0f
-        face.rotationY = 0f
-        face.scaleX = 1f
-        face.scaleY = 1f
-        face.translationX = 0f
-        face.translationY = 0f
-        face.alpha = 1f
-        face.setLayerType(android.view.View.LAYER_TYPE_NONE, null)
-    }
-
     override fun onViewRecycled(h: VH) {
-        resetFace(h.face)
+        PageTurn.drop(h.face)
     }
 
     override fun onViewAttachedToWindow(h: VH) {
-        resetFace(h.face)
+        if (!PageTurn.owns(h.face)) PageTurn.drop(h.face)
     }
 
     override fun onViewDetachedFromWindow(h: VH) {
-        resetFace(h.face)
+        if (!PageTurn.animating()) PageTurn.drop(h.face)
     }
 
     override fun getItemCount() = items.size
@@ -251,7 +242,9 @@ class TileAdapter(
     override fun onBindViewHolder(h: VH, position: Int) {
         val t = items[position]
         h.root.animate().cancel()
-        resetFace(h.face)
+        if (!PageTurn.owns(h.face)) {
+            PageTurn.drop(h.face)
+        }
         h.face.elevation = if (editMode) dp(2).toFloat() else 0f
         val gap = dp(2)
         val unit = cellSize(h.root)

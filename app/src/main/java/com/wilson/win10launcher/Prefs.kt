@@ -42,11 +42,6 @@ class Prefs(private val appCtx: Context) {
             sp.edit().putString("look", next).putBoolean("vistaVibe", next == "vista").apply()
         }
 
-    /** WP7 tease peek: shown once, after the animation version is installed, not on every home press. */
-    var drawerTeaseShown: Boolean
-        get() = sp.getBoolean("drawerTeaseShown", false)
-        set(v) { sp.edit().putBoolean("drawerTeaseShown", v).apply() }
-
     val vistaVibe: Boolean get() = look == "vista"
     val ice: Boolean get() = look == "ice"
     val glassHome: Boolean get() = look == "vista" || look == "ice"
