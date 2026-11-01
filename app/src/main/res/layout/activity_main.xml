@@ -80,6 +80,16 @@
                     android:text="⚙"
                     android:textColor="?android:attr/textColorPrimary"
                     android:textSize="20sp" />
+
+                <TextView
+                    android:id="@+id/startArrow"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:contentDescription="Open All Apps"
+                    android:gravity="center"
+                    android:text=">"
+                    android:textColor="?android:attr/textColorPrimary"
+                    android:textSize="20sp" />
             </LinearLayout>
         </FrameLayout>
 

@@ -41,6 +41,7 @@ class MainActivity : AppCompatActivity() {
     private var drawerAnim: ValueAnimator? = null
     private lateinit var editBanner: TextView
     private lateinit var editBtn: Button
+    private lateinit var startArrow: View
     private val cols = Tile.GRID
     private enum class Leave { NONE, SLIDE, TURN, FEATHER }
     private var leave = Leave.NONE
@@ -179,6 +180,9 @@ class MainActivity : AppCompatActivity() {
             applyChrome()
         }
         findViewById<View>(R.id.allAppsBtn).setOnClickListener { settleDrawer(true) }
+        startArrow = findViewById(R.id.startArrow)
+        startArrow.setOnClickListener { settleDrawer(true) }
+        findViewById<View>(R.id.backArrow)?.setOnClickListener { settleDrawer(false) }
         findViewById<View>(R.id.settingsBtn).setOnClickListener {
             slideTo(Intent(this, SettingsActivity::class.java))
         }
@@ -344,6 +348,7 @@ class MainActivity : AppCompatActivity() {
         editBtn.setTextColor(ink)
         findViewById<Button>(R.id.allAppsBtn).setTextColor(ink)
         findViewById<Button>(R.id.settingsBtn).setTextColor(ink)
+        if (::startArrow.isInitialized) (startArrow as TextView).setTextColor(ink)
         when (prefs.look) {
             "vista" -> {
                 dock.background = VistaGlass.tile(prefs.accentColor, dp(8).toFloat(), dp(1))
@@ -472,6 +477,12 @@ class MainActivity : AppCompatActivity() {
         drawerX = x.coerceIn(-w, 0f)
         startPage.translationX = drawerX
         allAppsPage.translationX = drawerX + w
+        // WP7 tease: the Start arrow is visible at rest, fades as the drawer opens.
+        if (::startArrow.isInitialized) {
+            val open = (-drawerX / w).coerceIn(0f, 1f)
+            startArrow.alpha = 1f - open
+            startArrow.visibility = if (open >= 1f) View.GONE else View.VISIBLE
+        }
     }
 
     private fun settleDrawer(open: Boolean) {

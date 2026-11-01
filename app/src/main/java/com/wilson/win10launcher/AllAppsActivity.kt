@@ -71,6 +71,10 @@ class AllAppsActivity : AppCompatActivity() {
         val titleBar = findViewById<TextView>(R.id.titleBar)
         titleBar.text = if (pickMode) "Tap an app to pin it" else "All apps"
         titleBar.setTextColor(prefs.fgColor())
+        findViewById<TextView>(R.id.backArrow)?.let { back ->
+            back.setTextColor(prefs.fgColor())
+            back.setOnClickListener { finish() }
+        }
 
         all = (AppList.get(packageManager) + AppList.App(Tile.CLOCK_PKG, Tile.CLOCK_CLS, "Clock"))
             .sortedWith(compareBy({ it.label.lowercase() }, { it.pkg }))
