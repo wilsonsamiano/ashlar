@@ -178,7 +178,13 @@ class AllAppsPanel(
         grid.setOnItemClickListener { _, _, pos, _ ->
             val want = letters[pos]
             val idx = adapter.current().indexOfFirst { it is Row.Header && it.letter == want }
-            if (idx >= 0) (list.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(idx, 0)
+            if (idx >= 0) {
+                (list.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(idx, 0)
+                // Series entrance for the picked section, like the drawer
+                // entrance, not an instant jump: visible rows slide in
+                // from the right one after another after the jump lands.
+                list.post { PageTurn.drawerStaggerIn(list) }
+            }
             dialog.dismiss()
         }
         dialog.show()

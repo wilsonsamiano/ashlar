@@ -167,7 +167,10 @@ class AllAppsActivity : AppCompatActivity() {
             val want = letters[pos]
             val rows = adapter.current()
             val idx = rows.indexOfFirst { it is Row.Header && it.letter == want }
-            if (idx >= 0) (rv.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(idx, 0)
+            if (idx >= 0) {
+                (rv.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(idx, 0)
+                rv.post { PageTurn.drawerStaggerIn(rv) }
+            }
             dialog.dismiss()
         }
         dialog.show()
