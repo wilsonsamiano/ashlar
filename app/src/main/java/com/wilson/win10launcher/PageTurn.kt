@@ -65,7 +65,6 @@ object PageTurn {
 
     /** WP7 slide ease, for the drawer settle. Same ExpoEase exponent 6 as PageTurn.slide. */
     fun easeOut(): Interpolator = EASE_OUT
-    fun easeIn(): Interpolator = EASE_IN
     private val DECEL = DecelerateInterpolator()
     private val handler = Handler(Looper.getMainLooper())
     private var laterToken = 0
@@ -132,37 +131,14 @@ object PageTurn {
         }
     }
 
-    /** Start is already parked off the left. Slide it back once it is on screen. */
-    fun returnSlide(page: View, fromX: Float) {
-        page.animate().cancel()
-        flat(page)
-        page.translationX = fromX
-        onPreDraw(page) {
-            flat(page)
-            page.translationX = fromX
-            page.post { slide(page, 0f, easeOut = true, hold = false) }
-        }
-    }
-
+    
     fun leaveSlide(page: View, toX: Float, then: () -> Unit) {
         page.animate().cancel()
         flat(page)
         slide(page, toX, easeOut = true, hold = true, then = then)
     }
 
-    /** Arriving page: posed folded back, then EaseOut to flat. No zoom. */
-    fun enterTurn(page: View) {
-        page.animate().cancel()
-        page.translationX = 0f
-        page.rotationY = OPEN
-        onPreDraw(page) {
-            hinge(page)
-            page.translationX = 0f
-            page.rotationY = OPEN
-            page.post { spin(page, 0f, IN_MS, easeOut = true, hold = false) }
-        }
-    }
-
+    
     /** Page underneath is still folded. Unfold it (toolkit BackwardIn). */
     fun returnTurn(page: View) {
         page.animate().cancel()
@@ -467,17 +443,7 @@ object PageTurn {
         leaveSlide(page, w, then)
     }
 
-    /** Finger tracking. Flat. The view itself moves — there is no second copy. */
-    fun trackSlide(page: View, x: Float) {
-        cancelLater()
-        page.animate().cancel()
-        page.rotationY = 0f
-        page.rotationX = 0f
-        page.scaleX = 1f
-        page.scaleY = 1f
-        page.translationX = x
-    }
-
+    
     /** The page that owns the tiles, so the fold is one sheet instead of many layers. */
     private fun sheetOf(grid: RecyclerView): View {
         var v: View = grid
@@ -529,54 +495,6 @@ object PageTurn {
     }
 
     /** Distance from the tapped tile. The tapped tile itself waits 0. */
-    private fun featherDelay(
-        face: View,
-        ox: Float,
-        oy: Float,
-        origin: Boolean,
-        leaving: Boolean
-    ): Long {
-        if (origin) return 0L
-        val loc = IntArray(2)
-        face.getLocationOnScreen(loc)
-        val cx = loc[0] + face.width / 2f
-        val cy = loc[1] + face.height / 2f
-        val dist = hypot((cx - ox).toDouble(), (cy - oy).toDouble()).toFloat()
-        val step = face.resources.displayMetrics.density * 96f
-        return if (leaving) {
-            // Tight wave. A long gap makes the page fall apart into separate doors.
-            (dist / step * 18f).toLong().coerceAtMost(70L)
-        } else {
-            (dist / step * 12f).toLong().coerceAtMost(40L)
-        }
-    }
-
-    /** Visual order, not child order. Child order is adapter order, which
-     *  for a grid with wide/medium/small tiles does not match where tiles
-     *  actually sit on screen, so a reversed-child wave looks random.
-     *  Sort by on-screen centre Y, then X, so bottom-first really is
-     *  bottom row first, left to right, working up, and top-first is
-     *  the reverse. */
-    private fun visualOrder(faces: List<View>, bottomFirst: Boolean): List<View> {
-        val withPos = faces.map { face ->
-            val loc = IntArray(2)
-            face.getLocationOnScreen(loc)
-            val cx = loc[0] + face.width / 2f
-            val cy = loc[1] + face.height / 2f
-            Triple(face, cx, cy)
-        }
-        val sorted = if (bottomFirst) {
-            withPos.sortedWith(compareByDescending<Triple<View, Float, Float>> { it.third }.thenBy { it.second })
-        } else {
-            withPos.sortedWith(compareBy<Triple<View, Float, Float>> { it.third }.thenBy { it.second })
-        }
-        return sorted.map { it.first }
-    }
-
-    private fun releaseLayer(face: View) {
-        face.setLayerType(View.LAYER_TYPE_NONE, null)
-    }
-
     private class TileSpin(val face: View, val delay: Long)
 
     /**
