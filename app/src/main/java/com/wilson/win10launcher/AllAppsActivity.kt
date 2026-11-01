@@ -71,8 +71,8 @@ class AllAppsActivity : AppCompatActivity() {
         val titleBar = findViewById<TextView>(R.id.titleBar)
         titleBar.text = if (pickMode) "Tap an app to pin it" else "All apps"
         titleBar.setTextColor(prefs.fgColor())
-        findViewById<TextView>(R.id.backArrow)?.let { back ->
-            back.setTextColor(prefs.fgColor())
+        findViewById<ImageView>(R.id.backArrow)?.let { back ->
+            back.imageTintList = android.content.res.ColorStateList.valueOf(prefs.fgColor())
             back.setOnClickListener { finish() }
         }
 

@@ -10,14 +10,14 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal">
 
-        <TextView
+        <ImageView
             android:id="@+id/backArrow"
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:contentDescription="Back to Start"
-            android:gravity="center"
-            android:text="&lt;"
-            android:textSize="28sp" />
+            android:scaleType="center"
+            android:src="@drawable/ic_chevron_left"
+            android:tint="?android:attr/textColorPrimary" />
 
         <TextView
             android:id="@+id/titleBar"

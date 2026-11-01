@@ -58,6 +58,10 @@ object PageTurn {
 
     private val EASE_IN = ExpoEase(EXPO, false)
     private val EASE_OUT = ExpoEase(EXPO, true)
+
+    /** WP7 slide ease, for the drawer settle. Same ExpoEase exponent 6 as PageTurn.slide. */
+    fun easeOut(): Interpolator = EASE_OUT
+    fun easeIn(): Interpolator = EASE_IN
     private val DECEL = DecelerateInterpolator()
     private val handler = Handler(Looper.getMainLooper())
     private var laterToken = 0

@@ -63,16 +63,6 @@
                     android:textSize="13sp" />
 
                 <Button
-                    android:id="@+id/allAppsBtn"
-                    style="?attr/borderlessButtonStyle"
-                    android:layout_width="wrap_content"
-                    android:layout_height="48dp"
-                    android:minWidth="48dp"
-                    android:text="ALL APPS"
-                    android:textColor="?android:attr/textColorPrimary"
-                    android:textSize="13sp" />
-
-                <Button
                     android:id="@+id/settingsBtn"
                     style="?attr/borderlessButtonStyle"
                     android:layout_width="48dp"
@@ -81,15 +71,14 @@
                     android:textColor="?android:attr/textColorPrimary"
                     android:textSize="20sp" />
 
-                <TextView
+                <ImageView
                     android:id="@+id/startArrow"
                     android:layout_width="48dp"
                     android:layout_height="48dp"
                     android:contentDescription="Open All Apps"
-                    android:gravity="center"
-                    android:text=">"
-                    android:textColor="?android:attr/textColorPrimary"
-                    android:textSize="20sp" />
+                    android:scaleType="center"
+                    android:src="@drawable/ic_chevron_right"
+                    android:tint="?android:attr/textColorPrimary" />
             </LinearLayout>
         </FrameLayout>
 

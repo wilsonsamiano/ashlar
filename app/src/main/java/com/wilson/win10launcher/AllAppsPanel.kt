@@ -38,7 +38,7 @@ class AllAppsPanel(
         val title = page.findViewById<TextView>(R.id.titleBar)
         title.text = "All apps"
         title.setTextColor(prefs.fgColor())
-        page.findViewById<TextView>(R.id.backArrow)?.setTextColor(prefs.fgColor())
+        page.findViewById<ImageView>(R.id.backArrow)?.imageTintList = android.content.res.ColorStateList.valueOf(prefs.fgColor())
         page.setBackgroundColor(if (prefs.glassHome) 0xF206121C.toInt() else prefs.bgColor())
         paintSearchField(search, prefs.fgColor())
         search.addTextChangedListener(object : TextWatcher {

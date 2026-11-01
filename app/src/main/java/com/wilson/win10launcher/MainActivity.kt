@@ -13,6 +13,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.ImageView
 import android.graphics.drawable.ColorDrawable
 import android.view.HapticFeedbackConstants
 import android.widget.LinearLayout
@@ -179,7 +180,6 @@ class MainActivity : AppCompatActivity() {
             adapter.editMode = !adapter.editMode
             applyChrome()
         }
-        findViewById<View>(R.id.allAppsBtn).setOnClickListener { settleDrawer(true) }
         startArrow = findViewById(R.id.startArrow)
         startArrow.setOnClickListener { settleDrawer(true) }
         findViewById<View>(R.id.backArrow)?.setOnClickListener { settleDrawer(false) }
@@ -193,6 +193,7 @@ class MainActivity : AppCompatActivity() {
             }
         })
         refresh()
+        teaseDrawerIfNeeded()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -346,9 +347,8 @@ class MainActivity : AppCompatActivity() {
         val dock = findViewById<View>(R.id.dock)
         val ink = if (prefs.glassHome) Color.WHITE else prefs.fgColor()
         editBtn.setTextColor(ink)
-        findViewById<Button>(R.id.allAppsBtn).setTextColor(ink)
         findViewById<Button>(R.id.settingsBtn).setTextColor(ink)
-        if (::startArrow.isInitialized) (startArrow as TextView).setTextColor(ink)
+        if (::startArrow.isInitialized) (startArrow as ImageView).imageTintList = android.content.res.ColorStateList.valueOf(ink)
         when (prefs.look) {
             "vista" -> {
                 dock.background = VistaGlass.tile(prefs.accentColor, dp(8).toFloat(), dp(1))
@@ -485,14 +485,46 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * WP7 tease, once only: the drawer peeks in from the right, then slides
+     * back to Start, so the user sees there is another page. Real WP7 speed,
+     * not the slowed video: 300ms out, 300ms back, ExpoEase.
+     */
+    private fun teaseDrawerIfNeeded() {
+        if (prefs.drawerTeaseShown || drawerOpen) return
+        pager.post {
+            if (isDestroyed || drawerOpen || prefs.drawerTeaseShown) return@post
+            prefs.drawerTeaseShown = true
+            val peek = -dp(72).toFloat()
+            drawerAnim?.cancel()
+            drawerAnim = ValueAnimator.ofFloat(0f, peek).apply {
+                duration = 300L
+                interpolator = PageTurn.easeOut()
+                addUpdateListener { applyDrawer(it.animatedValue as Float) }
+                start()
+            }
+            pager.postDelayed({
+                if (isDestroyed || drawerOpen) return@postDelayed
+                drawerAnim?.cancel()
+                drawerAnim = ValueAnimator.ofFloat(drawerX, 0f).apply {
+                    duration = 300L
+                    interpolator = PageTurn.easeOut()
+                    addUpdateListener { applyDrawer(it.animatedValue as Float) }
+                    start()
+                }
+            }, 300L)
+        }
+    }
+
     private fun settleDrawer(open: Boolean) {
         val target = if (open) -pageWidth() else 0f
         drawerOpen = open
         if (!open) appsPanel.hideKeyboard()
         drawerAnim?.cancel()
         drawerAnim = ValueAnimator.ofFloat(drawerX, target).apply {
-            duration = 140L
-            interpolator = DecelerateInterpolator()
+            // WP7 panorama slide, not a generic decelerate: 300ms ExpoEase exponent 6.
+            duration = 300L
+            interpolator = PageTurn.easeOut()
             addUpdateListener { applyDrawer(it.animatedValue as Float) }
             start()
         }
