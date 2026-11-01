@@ -16,7 +16,7 @@
             android:layout_height="48dp"
             android:contentDescription="Back to Start"
             android:scaleType="center"
-            android:src="@drawable/ic_chevron_left"
+            android:src="@drawable/ic_arrow_circle_left"
             android:tint="?android:attr/textColorPrimary" />
 
         <TextView

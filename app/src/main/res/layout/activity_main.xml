@@ -77,7 +77,7 @@
                     android:layout_height="48dp"
                     android:contentDescription="Open All Apps"
                     android:scaleType="center"
-                    android:src="@drawable/ic_chevron_right"
+                    android:src="@drawable/ic_arrow_circle_right"
                     android:tint="?android:attr/textColorPrimary" />
             </LinearLayout>
         </FrameLayout>

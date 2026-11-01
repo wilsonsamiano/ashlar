@@ -521,6 +521,13 @@ class MainActivity : AppCompatActivity() {
         drawerOpen = open
         if (!open) appsPanel.hideKeyboard()
         drawerAnim?.cancel()
+        // Series entrance / reverse exit, at the same time as the strip
+        // slide, not after it. Finger dragging itself stays flat and
+        // follows the finger; this only runs on the settle to open/closed.
+        if (::appsPanel.isInitialized) {
+            if (open) PageTurn.drawerStaggerIn(appsPanel.list)
+            else PageTurn.drawerStaggerOut(appsPanel.list)
+        }
         drawerAnim = ValueAnimator.ofFloat(drawerX, target).apply {
             // WP7 panorama slide, not a generic decelerate: 300ms ExpoEase exponent 6.
             duration = 300L

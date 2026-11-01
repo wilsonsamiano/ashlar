@@ -52,6 +52,10 @@ object PageTurn {
     /** Long on purpose so a slow screen still paints the whole turn. */
     private const val FEATHER_OUT = 320L
     private const val FEATHER_IN = 380L
+    /** Series stagger: one item after another, not all at once. Capped so a long list still finishes in time. */
+    private const val SERIES_MS = 30L
+    private const val SERIES_CAP_MS = 250L
+    private fun seriesDelay(index: Int): Long = (index * SERIES_MS).coerceAtMost(SERIES_CAP_MS)
 
     /** Left hinge. Negative: Android's positive rotationY is the mirror of WP7. */
     private const val OPEN = -72f
@@ -180,9 +184,12 @@ object PageTurn {
     }
 
     /**
-     * Tile tap. Press the tapped tile in, then turn every tile on the screen's
-     * left edge together. The tapped one leads. The rest follow close behind.
-     * [then] runs when the last tile has finished turning.
+     * Tile tap, in series, not all at once. The tapped tile presses in, then
+     * the other tiles swing out one after another in child order, each
+     * hinged on the left edge of the screen so they still read as one page
+     * turning. The tapped tile waits, then swings last, alone, and only then
+     * does [then] run and the app open. This is the WP7 application-entry
+     * motion: unrelated tiles flip out first, the selected tile last.
      */
     fun featherOut(grid: RecyclerView, tapped: View, then: () -> Unit) {
         val page = sheetOf(grid)
@@ -206,20 +213,38 @@ object PageTurn {
                 then()
                 return@later
             }
-            // One texture for the whole page. Per-tile layers clip at the
-            // bottom of the screen and tear when the taskbar resizes the window.
+            val hinge = pageHinge(grid)
+            val faces = facesOf(grid)
+            val others = faces.filter { it !== tapped }
+            val tiles = ArrayList<TileSpin>(faces.size)
+            for ((i, face) in others.withIndex()) {
+                hingeFace(face, hinge)
+                face.scaleX = 1f
+                face.scaleY = 1f
+                tiles.add(TileSpin(face, seriesDelay(i)))
+            }
+            // Tapped tile last, after every other tile has started.
+            val tappedFace = faces.firstOrNull { it === tapped } ?: tapped
+            hingeFace(tappedFace, hinge)
+            tappedFace.scaleX = 1f
+            tappedFace.scaleY = 1f
+            tiles.add(TileSpin(tappedFace, seriesDelay(others.size)))
             lock(page)
             freeze(grid, true)
-            hinge(page)
-            page.translationX = 0f
-            page.rotationY = 0f
-            spin(page, OPEN, FEATHER_OUT, easeOut = false, hold = true) {
+            playWave(tiles, 0f, OPEN, FEATHER_OUT, easeOut = false) {
                 freeze(grid, false)
                 then()
             }
         }
     }
 
+    /**
+     * Return home: the backward transition, in reverse series. The tile that
+     * swung out last swings back first, then the others in reverse order,
+     * each hinged on the left edge of the screen, back from -72 degrees to
+     * flat. Not a single simultaneous swing. ox/oy are kept for call-site
+     * compatibility; order is reverse child order, not distance.
+     */
     fun featherReturn(grid: RecyclerView, ox: Float, oy: Float) {
         val page = sheetOf(grid)
         onPreDraw(page) {
@@ -228,14 +253,16 @@ object PageTurn {
             unclip(page)
             lock(page)
             freeze(grid, true)
-            hinge(page)
-            page.translationX = 0f
-            page.rotationY = OPEN
-            page.post {
-                spin(page, 0f, FEATHER_IN, easeOut = true, hold = false) {
-                    freeze(grid, false)
-                    unlock(page)
-                }
+            val hinge = pageHinge(grid)
+            val faces = facesOf(grid).reversed()
+            val tiles = ArrayList<TileSpin>(faces.size)
+            for ((i, face) in faces.withIndex()) {
+                hingeFace(face, hinge)
+                tiles.add(TileSpin(face, seriesDelay(i)))
+            }
+            playWave(tiles, OPEN, 0f, FEATHER_IN, easeOut = true) {
+                freeze(grid, false)
+                unlock(page)
             }
         }
     }
@@ -249,6 +276,58 @@ object PageTurn {
         release(page)
         unlock(page)
         freeze(grid, false)
+    }
+
+    /**
+     * App drawer entrance, in series. Visible All Apps rows slide in from
+     * the right one after another, top to bottom, while the drawer strip
+     * itself slides. Only the visible rows stagger; scrolling later does
+     * not re-run it. Call at the same time as the strip settle, not after
+     * it, so the whole entrance still finishes in about 550ms.
+     */
+    fun drawerStaggerIn(list: RecyclerView) {
+        val density = list.resources.displayMetrics.density
+        val offset = 64f * density
+        for (i in 0 until list.childCount) {
+            val child = list.getChildAt(i)
+            val face = if (child.id == R.id.tileFace) child
+                else child.findViewById<View>(R.id.tileFace) ?: child
+            face.animate().cancel()
+            face.translationX = offset
+            face.alpha = 0f
+            face.animate()
+                .translationX(0f)
+                .alpha(1f)
+                .setStartDelay(seriesDelay(i))
+                .setDuration(SLIDE_MS)
+                .setInterpolator(EASE_OUT)
+                .start()
+        }
+    }
+
+    /**
+     * App drawer close, in reverse series. Visible rows peel off last
+     * first, sliding right and fading, while the strip slides back. The
+     * next drawerStaggerIn resets translation and alpha, so a quick
+     * reopen is never left faded.
+     */
+    fun drawerStaggerOut(list: RecyclerView) {
+        val density = list.resources.displayMetrics.density
+        val offset = 64f * density
+        val count = list.childCount
+        for (i in 0 until count) {
+            val child = list.getChildAt(i)
+            val face = if (child.id == R.id.tileFace) child
+                else child.findViewById<View>(R.id.tileFace) ?: child
+            face.animate().cancel()
+            face.animate()
+                .translationX(offset)
+                .alpha(0f)
+                .setStartDelay(seriesDelay(count - 1 - i))
+                .setDuration(SLIDE_MS)
+                .setInterpolator(EASE_OUT)
+                .start()
+        }
     }
 
     fun slideAwayRight(page: View, then: () -> Unit) {
@@ -431,6 +510,7 @@ object PageTurn {
         val clean = face.rotationX == 0f && face.rotationY == 0f &&
             face.scaleX == 1f && face.scaleY == 1f &&
             face.translationX == 0f && face.translationY == 0f &&
+            face.alpha == 1f &&
             face.layerType == View.LAYER_TYPE_NONE
         if (clean) return
         face.animate().setStartDelay(0L)
@@ -441,6 +521,7 @@ object PageTurn {
         face.scaleY = 1f
         face.translationX = 0f
         face.translationY = 0f
+        face.alpha = 1f
         if (face.width > 0 && face.height > 0) {
             face.pivotX = face.width / 2f
             face.pivotY = face.height / 2f
