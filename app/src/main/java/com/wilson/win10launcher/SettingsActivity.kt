@@ -117,7 +117,7 @@ class SettingsActivity : AppCompatActivity() {
         vistaBtn.alpha = if (look == "vista") 1f else 0.45f
         iceBtn.alpha = if (look == "ice") 1f else 0.45f
         findViewById<TextView>(R.id.lookStatus).text = when (look) {
-            "vista" -> "Vista Vibe keeps the flat tiles and puts a glass frame around each one."
+            "vista" -> "Vista Vibe puts a clear, glossy glass edge in your color around each tile, like Windows Vista."
             "ice" -> "Ice is liquid glass over your wallpaper. Slide to choose how clear it is."
             else -> "Metro is the flat Start screen."
         }

@@ -40,13 +40,12 @@ object VistaGlass {
     private const val EDGE = 96
     /** Lightly blurred wallpaper for clear glass. */
     private const val CLEAR_EDGE = 360
-    /** Sharp wallpaper behind Ice tiles. */
+    /** Sharp wallpaper behind Vista and Ice tiles. */
     private const val PAGE_EDGE = 1440
     private var cached: Drawable? = null
     private var plateBmp: Bitmap? = null
     private var clearBmp: Bitmap? = null
     private var cachedId = Int.MIN_VALUE
-    private var cachedIce = false
     private var loading = false
 
     /**
@@ -89,8 +88,8 @@ object VistaGlass {
     }
 
     fun tile(accent: Int, radius: Float, stroke: Int): Drawable {
-        val strip = (stroke * 6f).coerceIn(stroke * 4f, stroke * 10f)
-        val frame = GlassEdge(accent, radius.coerceAtLeast(stroke.toFloat()), strip)
+        val band = stroke * 8f
+        val frame = GlassEdge(accent, radius.coerceAtLeast(stroke * 3f), band, stroke.toFloat())
         val mask = GradientDrawable().apply {
             cornerRadius = radius
             setColor(Color.WHITE)
@@ -125,14 +124,15 @@ object VistaGlass {
 
     /**
      * The page behind the tiles, built once per wallpaper and reused.
-     * Vista gets a blurred, darkened wallpaper. Ice gets the wallpaper sharp,
-     * so the glass tiles read against it. The window itself stays opaque.
+     * Vista and Ice both get the wallpaper sharp, so the glass reads against
+     * it: Vista's clear edges show it directly, Ice lenses it. The window
+     * itself stays opaque.
      */
-    fun frost(activity: Activity, onReady: (Drawable) -> Unit, ice: Boolean = false) {
+    fun frost(activity: Activity, onReady: (Drawable) -> Unit) {
         clearCompositor(activity)
         val id = wallpaperId(activity.applicationContext)
         val hit = cached
-        if (hit != null && cachedId == id && cachedIce == ice) {
+        if (hit != null && cachedId == id) {
             onReady(hit)
             return
         }
@@ -140,13 +140,12 @@ object VistaGlass {
         loading = true
         val app = activity.applicationContext
         Thread {
-            val built = runCatching { build(app, ice) }.getOrNull() ?: fallback()
+            val built = runCatching { build(app) }.getOrNull() ?: fallback()
             activity.runOnUiThread {
                 loading = false
                 if (activity.isDestroyed) return@runOnUiThread
                 cached = built
                 cachedId = id
-                cachedIce = ice
                 onReady(built)
             }
         }.start()
@@ -160,7 +159,7 @@ object VistaGlass {
         }
     }
 
-    private fun build(context: Context, ice: Boolean): Drawable {
+    private fun build(context: Context): Drawable {
         val src = WallpaperManager.getInstance(context).drawable ?: return fallback()
         val dm = context.resources.displayMetrics
         // Frame the wallpaper the way the screen does: fill it, crop the overflow.
@@ -172,14 +171,9 @@ object VistaGlass {
         val clear = render(src, CLEAR_EDGE, aspect)
         if (clear != null) blurOnce(clear)
         clearBmp = clear
-        if (ice) {
-            val long = maxOf(dm.widthPixels, dm.heightPixels).coerceAtMost(PAGE_EDGE)
-            val page = render(src, long, aspect) ?: return fallback()
-            Canvas(page).drawColor(0x14000000)
-            return pageDrawable(context, page)
-        }
-        val page = plate.copy(Bitmap.Config.ARGB_8888, true)
-        Canvas(page).drawColor(0x55081420)
+        val long = maxOf(dm.widthPixels, dm.heightPixels).coerceAtMost(PAGE_EDGE)
+        val page = render(src, long, aspect) ?: return fallback()
+        Canvas(page).drawColor(0x14000000)
         return pageDrawable(context, page)
     }
 
@@ -276,81 +270,131 @@ object VistaGlass {
     }
 }
 
-/** Glass frame around a flat phone tile. The color stays in the middle. */
+/**
+ * Vista Aero tile. A clear, colored glass edge around a solid color tile,
+ * with Vista's gloss over the whole thing:
+ *  - the edge is see-through: the wallpaper page behind the tile shows
+ *    through, tinted with the accent color (nothing is painted under it)
+ *  - diagonal light streaks, strongest on the glass edge
+ *  - a bright top half with a hard horizon, and a darker bottom half
+ *  - a dark outer line and a bright inner line, as on a Vista window
+ */
 private class GlassEdge(
     private val accent: Int,
     private val radius: Float,
-    private val strip: Float
+    private val band: Float,
+    private val line: Float
 ) : Drawable() {
 
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+    private val tile = RectF()
+    private val plate = RectF()
     private val rect = RectF()
     private var paintAlpha = 255
+
+    // Built when the size changes, not on every frame.
+    private val builtFor = RectF()
+    private var streak: LinearGradient? = null
+    private var gloss: LinearGradient? = null
+    private var edgeGloss: LinearGradient? = null
 
     override fun draw(canvas: Canvas) {
         val b = bounds
         if (b.isEmpty) return
-        val shadow = (strip * 0.45f).coerceAtLeast(2f)
-        val tile = RectF(
-            b.left + shadow * 0.25f,
-            b.top + shadow * 0.15f,
-            b.right - shadow,
-            b.bottom - shadow
-        )
-        if (tile.width() < 4f || tile.height() < 4f) return
+        val shadow = (band * 0.35f).coerceAtLeast(2f)
+        tile.set(b.left + 1f, b.top + 1f, b.right - shadow, b.bottom - shadow)
+        if (tile.width() < 8f || tile.height() < 8f) return
+        val inset = band.coerceAtMost(minOf(tile.width(), tile.height()) * 0.18f)
+        plate.set(tile.left + inset, tile.top + inset, tile.right - inset, tile.bottom - inset)
+        val plateR = (radius * 0.4f).coerceAtLeast(1f)
+        prepare()
 
-        fill.alpha = paintAlpha
-        edge.alpha = paintAlpha
+        // Soft shadow: a few widening, faint rings.
         fill.shader = null
-        fill.color = 0x55000000
-        rect.set(tile.left, tile.top + shadow * 0.55f, tile.right, tile.bottom + shadow * 0.2f)
-        canvas.drawRoundRect(rect, radius, radius, fill)
+        for (i in 0 until 3) {
+            val grow = i * 1.5f
+            fill.color = 0x16000000
+            fill.alpha = 0x16 * paintAlpha / 255
+            rect.set(tile.left - grow, tile.top + 2f + grow, tile.right + grow, tile.bottom + 2f + grow)
+            canvas.drawRoundRect(rect, radius + grow, radius + grow, fill)
+        }
 
-        // The rim is the glass. Cool, brighter along the top.
-        fill.shader = LinearGradient(
-            tile.left, tile.top, tile.left, tile.bottom,
-            intArrayOf(0xF4FFFFFF.toInt(), 0xC8D5E6F4.toInt(), 0x99778BA3.toInt()),
-            floatArrayOf(0f, 0.42f, 1f),
-            Shader.TileMode.CLAMP
-        )
+        // Clear colored glass: only a tint, so the wallpaper behind shows through.
+        fill.color = Color.argb(0x3A, Color.red(accent), Color.green(accent), Color.blue(accent))
+        fill.alpha = 0x3A * paintAlpha / 255
         canvas.drawRoundRect(tile, radius, radius, fill)
 
-        val band = strip.coerceAtMost(minOf(tile.width(), tile.height()) * 0.22f)
-        val plateR = (radius * 0.35f).coerceAtLeast(1f)
-        val plate = RectF(tile.left + band, tile.top + band, tile.right - band, tile.bottom - band)
-        if (plate.width() <= 0f || plate.height() <= 0f) return
-
-        fill.shader = LinearGradient(
-            plate.left, plate.top, plate.left, plate.bottom,
-            mix(accent, 0.16f, 0xF4),
-            mix(accent, 0.02f, 0xF7),
-            Shader.TileMode.CLAMP
-        )
+        // The color tile inside the glass.
+        fill.color = accent
+        fill.alpha = paintAlpha
         canvas.drawRoundRect(plate, plateR, plateR, fill)
 
-        edge.shader = null
-        edge.strokeWidth = 1f
-        edge.color = 0x66000000
-        edge.alpha = paintAlpha
-        canvas.drawRoundRect(plate, plateR, plateR, edge)
-
-        edge.strokeWidth = 1.25f
-        edge.color = 0xEEFFFFFF.toInt()
-        edge.alpha = paintAlpha
-        val outer = 0.8f
-        rect.set(tile.left + outer, tile.top + outer, tile.right - outer, tile.bottom - outer)
-        canvas.drawRoundRect(rect, radius, radius, edge)
-
+        // Streaks: faint across the tile, strong on the glass edge.
+        fill.color = Color.WHITE
+        fill.shader = streak
+        fill.alpha = 0x70 * paintAlpha / 255
+        canvas.drawRoundRect(tile, radius, radius, fill)
         canvas.save()
-        canvas.clipRect(tile.left, tile.top, tile.right, tile.top + band * 0.9f)
-        edge.strokeWidth = (band * 0.62f).coerceAtLeast(1.5f)
-        edge.color = 0xD9FFFFFF.toInt()
-        edge.alpha = paintAlpha
-        val topInset = edge.strokeWidth / 2f
-        rect.set(tile.left + topInset, tile.top + topInset, tile.right - topInset, tile.bottom - topInset)
-        canvas.drawRoundRect(rect, radius, radius, edge)
+        canvas.clipOutRect(plate)
+        fill.alpha = paintAlpha
+        canvas.drawRoundRect(tile, radius, radius, fill)
+        // The edge is glossier than the tile.
+        fill.shader = edgeGloss
+        canvas.drawRoundRect(tile, radius, radius, fill)
         canvas.restore()
+
+        // Vista gloss over everything: bright top half, hard horizon, darker bottom half.
+        fill.shader = gloss
+        fill.alpha = paintAlpha
+        canvas.drawRoundRect(tile, radius, radius, fill)
+        fill.shader = null
+
+        // Lines: around the color tile, then the outer dark and inner bright edge.
+        edge.strokeWidth = line
+        edge.color = 0x80FFFFFF.toInt()
+        edge.alpha = 0x80 * paintAlpha / 255
+        rect.set(plate.left - line, plate.top - line, plate.right + line, plate.bottom + line)
+        canvas.drawRoundRect(rect, plateR + line, plateR + line, edge)
+        edge.color = 0xA0000000.toInt()
+        edge.alpha = 0xA0 * paintAlpha / 255
+        canvas.drawRoundRect(plate, plateR, plateR, edge)
+        edge.color = 0xB8000000.toInt()
+        edge.alpha = 0xB8 * paintAlpha / 255
+        val h = line / 2f
+        rect.set(tile.left + h, tile.top + h, tile.right - h, tile.bottom - h)
+        canvas.drawRoundRect(rect, radius, radius, edge)
+        edge.color = 0xE6FFFFFF.toInt()
+        edge.alpha = 0xE6 * paintAlpha / 255
+        val i = line * 1.5f
+        rect.set(tile.left + i, tile.top + i, tile.right - i, tile.bottom - i)
+        canvas.drawRoundRect(rect, radius - line, radius - line, edge)
+    }
+
+    private fun prepare() {
+        if (builtFor == tile && gloss != null) return
+        builtFor.set(tile)
+        // One bright narrow streak and one wide faint one per repeat, running
+        // diagonally down to the right, as on Vista's glass.
+        val period = maxOf(tile.width(), tile.height()) * 1.1f
+        streak = LinearGradient(
+            tile.left, tile.top, tile.left + period * 0.8f, tile.top + period * 0.6f,
+            intArrayOf(0, 0, 0x4CFFFFFF, 0, 0, 0x24FFFFFF, 0, 0),
+            floatArrayOf(0f, 0.25f, 0.30f, 0.35f, 0.50f, 0.62f, 0.74f, 1f),
+            Shader.TileMode.REPEAT
+        )
+        val mid = tile.top + tile.height() * 0.5f
+        gloss = LinearGradient(
+            0f, tile.top, 0f, tile.bottom,
+            intArrayOf(0x8CFFFFFF.toInt(), 0x30FFFFFF, 0x00000000, 0x26000000),
+            floatArrayOf(0f, 0.5f, 0.5f, 1f),
+            Shader.TileMode.CLAMP
+        )
+        edgeGloss = LinearGradient(
+            0f, tile.top, 0f, mid,
+            0x40FFFFFF, 0x10FFFFFF,
+            Shader.TileMode.CLAMP
+        )
     }
 
     override fun setAlpha(alpha: Int) {
@@ -366,16 +410,6 @@ private class GlassEdge(
 
     @Deprecated("Deprecated in Java")
     override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
-
-    private fun mix(color: Int, white: Float, alpha: Int): Int {
-        val keep = 1f - white
-        return Color.argb(
-            alpha,
-            (Color.red(color) * keep + 255f * white).toInt().coerceIn(0, 255),
-            (Color.green(color) * keep + 255f * white).toInt().coerceIn(0, 255),
-            (Color.blue(color) * keep + 255f * white).toInt().coerceIn(0, 255)
-        )
-    }
 }
 
 /**

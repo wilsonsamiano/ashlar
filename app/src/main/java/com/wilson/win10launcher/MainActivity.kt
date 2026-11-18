@@ -331,7 +331,7 @@ class MainActivity : AppCompatActivity() {
                     dockInvalidate()
                 }
                 if (root.background == null) paint(VistaGlass.fallback())
-                VistaGlass.frost(this, paint, prefs.ice)
+                VistaGlass.frost(this, paint)
             } else {
                 root.setBackgroundColor(prefs.bgColor())
                 window.statusBarColor = prefs.bgColor()
