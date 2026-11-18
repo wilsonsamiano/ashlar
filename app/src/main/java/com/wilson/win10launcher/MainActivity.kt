@@ -331,7 +331,7 @@ class MainActivity : AppCompatActivity() {
                     dockInvalidate()
                 }
                 if (root.background == null) paint(VistaGlass.fallback())
-                VistaGlass.frost(this, paint)
+                VistaGlass.frost(this, paint, prefs.ice)
             } else {
                 root.setBackgroundColor(prefs.bgColor())
                 window.statusBarColor = prefs.bgColor()
@@ -365,6 +365,17 @@ class MainActivity : AppCompatActivity() {
         val plates = prefs.iconShape
         val vibe = prefs.vistaVibe
         val iced = prefs.ice
+        val clarity = prefs.iceClarity / 100f
+        if (VistaGlass.clarity != clarity) {
+            VistaGlass.clarity = clarity
+            // Same tiles, new glass: repaint the plates without rebinding them.
+            if (iced) {
+                for (i in 0 until grid.childCount) {
+                    grid.getChildAt(i).findViewById<View>(R.id.tileFace)?.invalidate()
+                }
+                dock.invalidate()
+            }
+        }
         val same = nextAccent == adapter.accent && plates == adapter.iconShape &&
             vibe == adapter.vista && iced == adapter.ice && next == adapter.tiles()
         adapter.accent = nextAccent

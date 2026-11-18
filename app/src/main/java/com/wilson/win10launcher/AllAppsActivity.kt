@@ -49,6 +49,7 @@ class AllAppsActivity : AppCompatActivity() {
         setContentView(R.layout.activity_all_apps)
         prefs.chrome(this)
         VistaGlass.clearCompositor(this)
+        VistaGlass.clarity = prefs.iceClarity / 100f
         val page = findViewById<View>(android.R.id.content)
         if (prefs.glassHome) {
             val glass = VistaGlass.sheet(prefs.darkTheme)

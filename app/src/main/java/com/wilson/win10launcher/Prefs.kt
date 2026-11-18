@@ -42,6 +42,11 @@ class Prefs(private val appCtx: Context) {
             sp.edit().putString("look", next).putBoolean("vistaVibe", next == "vista").apply()
         }
 
+    /** Ice glass, 0 frosted to 100 clearer. 50 is clear glass. */
+    var iceClarity: Int
+        get() = sp.getInt("iceClarity", 50).coerceIn(0, 100)
+        set(v) { sp.edit().putInt("iceClarity", v.coerceIn(0, 100)).apply() }
+
     val vistaVibe: Boolean get() = look == "vista"
     val ice: Boolean get() = look == "ice"
     val glassHome: Boolean get() = look == "vista" || look == "ice"

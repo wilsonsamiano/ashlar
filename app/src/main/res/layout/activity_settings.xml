@@ -75,6 +75,52 @@
             android:text="Metro is flat. Vista Vibe adds a glass frame. Ice is a milky liquid-glass tile."
             android:textSize="15sp" />
 
+        <LinearLayout
+            android:id="@+id/iceGlassRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/iceGlassName"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="sans-serif-light"
+                android:text="Clear"
+                android:textSize="17sp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif-light"
+                    android:text="Frosted"
+                    android:textSize="13sp" />
+
+                <SeekBar
+                    android:id="@+id/iceGlass"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:contentDescription="Ice glass clarity"
+                    android:max="100" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif-light"
+                    android:text="Clear"
+                    android:textSize="13sp" />
+            </LinearLayout>
+        </LinearLayout>
+
         <TextView
             android:id="@+id/themeTitle"
             android:layout_width="wrap_content"

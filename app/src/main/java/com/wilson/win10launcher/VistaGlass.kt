@@ -8,10 +8,12 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.ColorFilter
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.PixelFormat
-import android.graphics.RadialGradient
+import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.BitmapShader
 import android.graphics.Matrix
@@ -36,13 +38,29 @@ import android.view.WindowManager
 object VistaGlass {
 
     private const val EDGE = 96
+    /** Lightly blurred wallpaper for clear glass. */
+    private const val CLEAR_EDGE = 360
+    /** Sharp wallpaper behind Ice tiles. */
+    private const val PAGE_EDGE = 1440
     private var cached: Drawable? = null
     private var plateBmp: Bitmap? = null
+    private var clearBmp: Bitmap? = null
     private var cachedId = Int.MIN_VALUE
+    private var cachedIce = false
     private var loading = false
+
+    /**
+     * Ice glass, 0 = frosted, 0.5 = clear, 1 = clearer. Set from Prefs.iceClarity
+     * before the tiles draw. Every Ice plate reads it when it draws.
+     */
+    @Volatile
+    var clarity: Float = 0.5f
 
     /** Blurred wallpaper with the scrim left off, so a tile can lens it. */
     fun sample(): Bitmap? = plateBmp
+
+    /** Lightly blurred wallpaper, same framing as [sample], for clear glass. */
+    fun clearSample(): Bitmap? = clearBmp
 
     fun ice(accent: Int, dark: Boolean, capsule: Boolean): Drawable = IcePlate(accent, dark, capsule)
 
@@ -105,12 +123,16 @@ object VistaGlass {
         )
     }
 
-    /** One small blur of the wallpaper, reused. The window itself stays opaque. */
-    fun frost(activity: Activity, onReady: (Drawable) -> Unit) {
+    /**
+     * The page behind the tiles, built once per wallpaper and reused.
+     * Vista gets a blurred, darkened wallpaper. Ice gets the wallpaper sharp,
+     * so the glass tiles read against it. The window itself stays opaque.
+     */
+    fun frost(activity: Activity, onReady: (Drawable) -> Unit, ice: Boolean = false) {
         clearCompositor(activity)
         val id = wallpaperId(activity.applicationContext)
         val hit = cached
-        if (hit != null && cachedId == id) {
+        if (hit != null && cachedId == id && cachedIce == ice) {
             onReady(hit)
             return
         }
@@ -118,12 +140,13 @@ object VistaGlass {
         loading = true
         val app = activity.applicationContext
         Thread {
-            val built = runCatching { build(app) }.getOrNull() ?: fallback()
+            val built = runCatching { build(app, ice) }.getOrNull() ?: fallback()
             activity.runOnUiThread {
                 loading = false
                 if (activity.isDestroyed) return@runOnUiThread
                 cached = built
                 cachedId = id
+                cachedIce = ice
                 onReady(built)
             }
         }.start()
@@ -137,45 +160,72 @@ object VistaGlass {
         }
     }
 
-    private fun build(context: Context): Drawable {
+    private fun build(context: Context, ice: Boolean): Drawable {
         val src = WallpaperManager.getInstance(context).drawable ?: return fallback()
-        if (src is BitmapDrawable && src.bitmap != null) {
-            val b = src.bitmap
-            val scale = EDGE.toFloat() / maxOf(b.width, b.height).coerceAtLeast(1)
-            val tw = (b.width * scale).toInt().coerceIn(8, EDGE)
-            val th = (b.height * scale).toInt().coerceIn(8, EDGE)
-            val scaled = Bitmap.createScaledBitmap(b, tw, th, true)
-            val small = if (scaled === b) b.copy(Bitmap.Config.ARGB_8888, true) else scaled
-            blur(small)
-            plateBmp = small.copy(Bitmap.Config.ARGB_8888, false)
-            Canvas(small).drawColor(0x55081420)
-            return BitmapDrawable(context.resources, small).apply {
-                gravity = Gravity.FILL
-                setTileModeXY(null, null)
-            }
+        val dm = context.resources.displayMetrics
+        // Frame the wallpaper the way the screen does: fill it, crop the overflow.
+        // Every sample uses the same framing, so a tile lines up with the page.
+        val aspect = dm.heightPixels.toFloat() / dm.widthPixels.coerceAtLeast(1)
+        val plate = render(src, EDGE, aspect) ?: return fallback()
+        blur(plate)
+        plateBmp = plate
+        val clear = render(src, CLEAR_EDGE, aspect)
+        if (clear != null) blurOnce(clear)
+        clearBmp = clear
+        if (ice) {
+            val long = maxOf(dm.widthPixels, dm.heightPixels).coerceAtMost(PAGE_EDGE)
+            val page = render(src, long, aspect) ?: return fallback()
+            Canvas(page).drawColor(0x14000000)
+            return pageDrawable(context, page)
         }
-        val small = shrink(src) ?: return fallback()
-        blur(small)
-        plateBmp = small.copy(Bitmap.Config.ARGB_8888, false)
-        Canvas(small).drawColor(0x55081420)
-        return BitmapDrawable(context.resources, small).apply {
+        val page = plate.copy(Bitmap.Config.ARGB_8888, true)
+        Canvas(page).drawColor(0x55081420)
+        return pageDrawable(context, page)
+    }
+
+    private fun pageDrawable(context: Context, bmp: Bitmap): Drawable {
+        return BitmapDrawable(context.resources, bmp).apply {
             gravity = Gravity.FILL
             setTileModeXY(null, null)
+            isFilterBitmap = true
         }
     }
 
-    private fun shrink(drawable: Drawable): Bitmap? {
-        val w = drawable.intrinsicWidth
-        val h = drawable.intrinsicHeight
-        if (w <= 0 || h <= 0) return null
-        val scale = EDGE.toFloat() / maxOf(w, h)
-        val tw = (w * scale).toInt().coerceIn(8, EDGE)
-        val th = (h * scale).toInt().coerceIn(8, EDGE)
+    /** Draw the wallpaper into a bitmap of the screen's shape, longest side [edge], cropped to fill. */
+    private fun render(src: Drawable, edge: Int, aspect: Float): Bitmap? {
+        val iw = src.intrinsicWidth
+        val ih = src.intrinsicHeight
+        if (iw <= 0 || ih <= 0) return null
+        val tw: Int
+        val th: Int
+        if (aspect >= 1f) {
+            th = edge
+            tw = (edge / aspect).toInt().coerceAtLeast(8)
+        } else {
+            tw = edge
+            th = (edge * aspect).toInt().coerceAtLeast(8)
+        }
         val out = Bitmap.createBitmap(tw, th, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(out)
-        drawable.setBounds(0, 0, tw, th)
-        drawable.draw(canvas)
+        val scale = maxOf(tw / iw.toFloat(), th / ih.toFloat())
+        val dw = (iw * scale).toInt()
+        val dh = (ih * scale).toInt()
+        val left = (tw - dw) / 2
+        val top = (th - dh) / 2
+        val keep = Rect(src.bounds)
+        src.setBounds(left, top, left + dw, top + dh)
+        src.draw(Canvas(out))
+        src.bounds = keep
         return out
+    }
+
+    private fun blurOnce(bitmap: Bitmap) {
+        val w = bitmap.width
+        val h = bitmap.height
+        val pix = IntArray(w * h)
+        bitmap.getPixels(pix, 0, w, 0, 0, w, h)
+        val tmp = IntArray(pix.size)
+        box(pix, tmp, w, h)
+        bitmap.setPixels(tmp, 0, w, 0, 0, w, h)
     }
 
     private fun blur(bitmap: Bitmap) {
@@ -329,8 +379,13 @@ private class GlassEdge(
 }
 
 /**
- * Liquid-glass tile. The wallpaper is painted into the tile, then milked over,
- * so the window itself stays opaque and nothing blurs the app underneath.
+ * Liquid-glass tile. The wallpaper is painted into the tile, then lit like
+ * glass, so the window itself stays opaque and nothing blurs the app underneath.
+ *
+ * VistaGlass.clarity sets the glass, 0 to 1:
+ *  0    frosted. Heavily blurred wallpaper, milky, bright sheen.
+ *  0.5  clear. Lightly blurred wallpaper, magnified a little, as a thick lens does.
+ *  1    clearer. Almost no milk, thin sheen, strong edges.
  */
 private class IcePlate(
     private val accent: Int,
@@ -339,12 +394,26 @@ private class IcePlate(
 ) : Drawable() {
 
     var host: View? = null
-    private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val fill = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val rect = RectF()
-    private var shader: BitmapShader? = null
-    private var shaderBmp: Bitmap? = null
+    private val ring = RectF()
+    private val loc = IntArray(2)
     private val matrix = Matrix()
+
+    private var frostShader: BitmapShader? = null
+    private var frostOf: Bitmap? = null
+    private var clearShader: BitmapShader? = null
+    private var clearOf: Bitmap? = null
+
+    // Gradients depend only on the plate's size and the clarity, so they are
+    // built when one of those changes, not on every frame.
+    private val builtFor = RectF()
+    private var builtClarity = -1f
+    private var sheen: LinearGradient? = null
+    private var shade: LinearGradient? = null
+    private var rim: LinearGradient? = null
+    private var boost: ColorMatrixColorFilter? = null
 
     override fun draw(canvas: Canvas) {
         val b = bounds
@@ -355,77 +424,151 @@ private class IcePlate(
         } else {
             minOf(rect.width(), rect.height()) * 0.22f
         }
+        val c = VistaGlass.clarity.coerceIn(0f, 1f)
+        prepare(c)
 
+        // Soft shadow under the glass: a few widening, faint rings.
         fill.shader = null
-        fill.color = 0x44000000
-        canvas.drawRoundRect(
-            rect.left, rect.top + 3f, rect.right, rect.bottom + 2f,
-            rad, rad, fill
-        )
-
-        val bmp = VistaGlass.sample()
-        val view = host
+        fill.colorFilter = null
         fill.alpha = 255
-        if (bmp != null && view != null && view.isAttachedToWindow) {
-            val loc = IntArray(2)
+        for (i in 0 until 4) {
+            val grow = i * 1.5f
+            fill.color = 0x12000000
+            ring.set(rect.left - grow, rect.top + 3f + grow, rect.right + grow, rect.bottom + 3f + grow)
+            canvas.drawRoundRect(ring, rad + grow, rad + grow, fill)
+        }
+
+        // The lens: what is behind the tile, brightened and a touch more colorful.
+        val view = host
+        val frost = VistaGlass.sample()
+        val clear = VistaGlass.clearSample() ?: frost
+        if (frost != null && clear != null && view != null && view.isAttachedToWindow) {
             view.getLocationInWindow(loc)
             val root = view.rootView
-            val sx = root.width.coerceAtLeast(1) / bmp.width.toFloat()
-            val sy = root.height.coerceAtLeast(1) / bmp.height.toFloat()
-            matrix.setScale(sx, sy)
+            val rw = root.width.coerceAtLeast(1).toFloat()
+            val rh = root.height.coerceAtLeast(1).toFloat()
+            fill.colorFilter = boost
+
+            matrix.setScale(rw / clear.width, rh / clear.height)
             matrix.postTranslate(-loc[0].toFloat(), -loc[1].toFloat())
-            val sh = if (shaderBmp === bmp) shader else null
-            val live = sh ?: BitmapShader(bmp, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).also {
-                shader = it
-                shaderBmp = bmp
-            }
-            live.setLocalMatrix(matrix)
-            fill.shader = live
+            val mag = magnify(c)
+            if (mag != 1f) matrix.postScale(mag, mag, rect.centerX(), rect.centerY())
+            val cs = clearShader.takeIf { clearOf === clear }
+                ?: BitmapShader(clear, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).also {
+                    clearShader = it
+                    clearOf = clear
+                }
+            cs.setLocalMatrix(matrix)
+            fill.shader = cs
             canvas.drawRoundRect(rect, rad, rad, fill)
+
+            val frostAlpha = ((1f - 2f * c).coerceIn(0f, 1f) * 255f).toInt()
+            if (frostAlpha > 0) {
+                matrix.setScale(rw / frost.width, rh / frost.height)
+                matrix.postTranslate(-loc[0].toFloat(), -loc[1].toFloat())
+                val fs = frostShader.takeIf { frostOf === frost }
+                    ?: BitmapShader(frost, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).also {
+                        frostShader = it
+                        frostOf = frost
+                    }
+                fs.setLocalMatrix(matrix)
+                fill.shader = fs
+                fill.alpha = frostAlpha
+                canvas.drawRoundRect(rect, rad, rad, fill)
+                fill.alpha = 255
+            }
         } else {
             fill.shader = null
             fill.color = if (dark) 0xFF1C1C1E.toInt() else 0xFFF2F2F7.toInt()
             canvas.drawRoundRect(rect, rad, rad, fill)
         }
-
-        // Pale lens. Dark mode must not turn this into a dark slab.
+        fill.colorFilter = null
         fill.shader = null
-        fill.color = Color.argb(0x24, Color.red(accent), Color.green(accent), Color.blue(accent))
+
+        // A hint of the accent, then the milk that frosts the glass.
+        fill.color = Color.argb(
+            step(c, 0x16, 0x10, 0x06),
+            Color.red(accent), Color.green(accent), Color.blue(accent)
+        )
         canvas.drawRoundRect(rect, rad, rad, fill)
-        fill.color = if (dark) 0xA8F4F7FB.toInt() else 0xB8FFFFFF.toInt()
+        fill.color = if (dark) {
+            Color.argb(step(c, 0x26, 0x12, 0x08), 0, 0, 0)
+        } else {
+            Color.argb(step(c, 0x30, 0x12, 0x04), 255, 255, 255)
+        }
         canvas.drawRoundRect(rect, rad, rad, fill)
 
-        fill.shader = RadialGradient(
-            rect.left + rect.width() * 0.32f,
-            rect.top + rect.height() * 0.18f,
-            rect.width().coerceAtLeast(rect.height()) * 0.72f,
-            intArrayOf(0xF2FFFFFF.toInt(), 0x66FFFFFF, 0x00FFFFFF),
-            floatArrayOf(0f, 0.28f, 1f),
+        // Light across the top, and the glass thickening toward the bottom.
+        fill.color = Color.WHITE
+        fill.shader = sheen
+        canvas.drawRoundRect(rect, rad, rad, fill)
+        fill.shader = shade
+        canvas.drawRoundRect(rect, rad, rad, fill)
+        fill.shader = null
+
+        // Clear glass bends light away at its edge: a faint dark ring inside the rim.
+        val ringAlpha = step(c, 0x00, 0x30, 0x40)
+        if (ringAlpha > 0) {
+            edge.shader = null
+            edge.strokeWidth = 3f
+            edge.color = Color.argb(ringAlpha, 0, 0, 0)
+            ring.set(rect.left + 3f, rect.top + 3f, rect.right - 3f, rect.bottom - 3f)
+            canvas.drawRoundRect(ring, rad - 2f, rad - 2f, edge)
+        }
+
+        // Rim: bright where the light hits (top-left), fading, catching again bottom-right.
+        edge.color = Color.WHITE
+        edge.shader = rim
+        edge.strokeWidth = 2f
+        ring.set(rect.left + 1f, rect.top + 1f, rect.right - 1f, rect.bottom - 1f)
+        canvas.drawRoundRect(ring, rad, rad, edge)
+        edge.shader = null
+    }
+
+    private fun prepare(c: Float) {
+        if (builtFor == rect && builtClarity == c && sheen != null) return
+        builtFor.set(rect)
+        builtClarity = c
+        val top = step(c, 0x55, 0x40, 0x2C)
+        sheen = LinearGradient(
+            0f, rect.top, 0f, rect.top + rect.height() * 0.5f,
+            Color.argb(top, 255, 255, 255), 0x00FFFFFF,
             Shader.TileMode.CLAMP
         )
-        canvas.drawRoundRect(rect, rad, rad, fill)
-
-        val lip = 8f.coerceAtMost(rect.height() * 0.18f)
-        canvas.save()
-        canvas.clipRect(rect.left, rect.bottom - lip, rect.right, rect.bottom)
-        edge.strokeWidth = 1.4f
-        edge.color = 0x55FFFFFF
-        canvas.drawRoundRect(rect, rad, rad, edge)
-        canvas.restore()
-
-        edge.strokeWidth = 1.5f
-        edge.color = 0xEEFFFFFF.toInt()
-        canvas.drawRoundRect(
-            rect.left + 0.8f, rect.top + 0.8f, rect.right - 0.8f, rect.bottom - 0.8f,
-            rad, rad, edge
+        shade = LinearGradient(
+            0f, rect.top, 0f, rect.bottom,
+            0x00000000, 0x26000000,
+            Shader.TileMode.CLAMP
         )
+        rim = LinearGradient(
+            rect.left, rect.top, rect.right, rect.bottom,
+            intArrayOf(0xF2FFFFFF.toInt(), 0x4DFFFFFF, Color.argb(step(c, 0x40, 0x8C, 0xA6), 255, 255, 255)),
+            floatArrayOf(0f, 0.55f, 1f),
+            Shader.TileMode.CLAMP
+        )
+        val sat = lerp3(c, 1.35f, 1.20f, 1.12f)
+        val light = lerp3(c, 1.10f, 1.08f, 1.05f)
+        val m = ColorMatrix().apply { setSaturation(sat) }
+        m.postConcat(ColorMatrix().apply { setScale(light, light, light, 1f) })
+        boost = ColorMatrixColorFilter(m)
+    }
+
+    private fun magnify(c: Float): Float {
+        return 1f + 0.20f * minOf(c, 0.5f) + 0.04f * maxOf(c - 0.5f, 0f)
+    }
+
+    /** Linear from [a] at 0 to [b] at 0.5 to [z] at 1. */
+    private fun lerp3(c: Float, a: Float, b: Float, z: Float): Float {
+        return if (c <= 0.5f) a + (b - a) * (c / 0.5f) else b + (z - b) * ((c - 0.5f) / 0.5f)
+    }
+
+    private fun step(c: Float, a: Int, b: Int, z: Int): Int {
+        return lerp3(c, a.toFloat(), b.toFloat(), z.toFloat()).toInt().coerceIn(0, 255)
     }
 
     override fun setAlpha(alpha: Int) {}
 
-    override fun setColorFilter(colorFilter: ColorFilter?) {
-        fill.colorFilter = colorFilter
-    }
+    override fun setColorFilter(colorFilter: ColorFilter?) {}
 
     @Deprecated("Deprecated in Java")
     override fun getOpacity(): Int = PixelFormat.TRANSLUCENT

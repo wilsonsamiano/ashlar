@@ -118,9 +118,30 @@ class SettingsActivity : AppCompatActivity() {
         iceBtn.alpha = if (look == "ice") 1f else 0.45f
         findViewById<TextView>(R.id.lookStatus).text = when (look) {
             "vista" -> "Vista Vibe keeps the flat tiles and puts a glass frame around each one."
-            "ice" -> "Ice is pale see-through glass. The wallpaper shows through, with a bright shine across the top."
+            "ice" -> "Ice is liquid glass over your wallpaper. Slide to choose how clear it is."
             else -> "Metro is the flat Start screen."
         }
+        val iceRow = findViewById<View>(R.id.iceGlassRow)
+        val iceGlass = findViewById<android.widget.SeekBar>(R.id.iceGlass)
+        val iceGlassName = findViewById<TextView>(R.id.iceGlassName)
+        fun glassName(v: Int) = when {
+            v < 25 -> "Frosted"
+            v < 75 -> "Clear"
+            else -> "Clearer"
+        }
+        iceRow.visibility = if (look == "ice") View.VISIBLE else View.GONE
+        iceGlass.max = 100
+        iceGlass.progress = prefs.iceClarity
+        iceGlassName.text = glassName(prefs.iceClarity)
+        iceGlass.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(bar: android.widget.SeekBar, value: Int, fromUser: Boolean) {
+                iceGlassName.text = glassName(value)
+            }
+            override fun onStartTrackingTouch(bar: android.widget.SeekBar) {}
+            override fun onStopTrackingTouch(bar: android.widget.SeekBar) {
+                prefs.iceClarity = bar.progress
+            }
+        })
 
         val iconRow = findViewById<android.widget.LinearLayout>(R.id.iconShapes)
         fun paintShapes() {
