@@ -75,6 +75,8 @@ class MainActivity : AppCompatActivity() {
 
     private val packages = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
+            // An updated app can ship a new icon.
+            if (::adapter.isInitialized) adapter.clearIconCache()
             if (::appsPanel.isInitialized) appsPanel.reload()
         }
     }
@@ -169,7 +171,6 @@ class MainActivity : AppCompatActivity() {
         grid.adapter = adapter
         grid.setItemViewCacheSize(24)
         grid.setHasFixedSize(true)
-        grid.setDrawingCacheEnabled(true)
         grid.addOnItemTouchListener(organizeDrag())
         grid.addOnItemTouchListener(swipeAllApps(true))
         appsPanel.list.addOnItemTouchListener(swipeAllApps(false))
@@ -290,7 +291,16 @@ class MainActivity : AppCompatActivity() {
             Leave.NONE -> if (!PageTurn.animating()) PageTurn.flatten(grid)
         }
         leave = Leave.NONE
-        if (::appsPanel.isInitialized) appsPanel.reload()
+        // Rescanning every installed app while the tiles unfold steals frames
+        // from the animation. Wait until it has finished. Installs and removals
+        // are still picked up at once by the package receiver.
+        if (::appsPanel.isInitialized) {
+            grid.postDelayed({
+                if (isFinishing || isDestroyed) return@postDelayed
+                if (PageTurn.animating()) grid.postDelayed({ if (!isDestroyed) appsPanel.reload() }, 600L)
+                else appsPanel.reload()
+            }, 700L)
+        }
     }
 
     private fun page(): View = findViewById(android.R.id.content)

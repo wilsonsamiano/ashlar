@@ -194,13 +194,38 @@ class TileAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
         val v = LayoutInflater.from(ctx).inflate(R.layout.item_tile, parent, false)
         val vh = VH(v)
-        // Windows 10 Mobile 3D tilt. Skipped while rearranging.
-        // Returning false lets click, long-click, and drag still fire.
+        var pressX = 0f
+        var pressY = 0f
+        var cloth = false
+        // Press sinks this tile and a softer ring of neighbors. Returning
+        // false lets click, long-click, and drag still fire.
         vh.face.setOnTouchListener { view, e ->
             if (!editMode) {
                 when (e.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> tilt(view, e.x, e.y)
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> untilt(view)
+                    MotionEvent.ACTION_DOWN -> {
+                        pressX = e.rawX
+                        pressY = e.rawY
+                        cloth = true
+                        PageTurn.pressIn(view)
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        if (cloth) {
+                            val slop = view.resources.displayMetrics.density * 18f
+                            val dx = e.rawX - pressX
+                            val dy = e.rawY - pressY
+                            if (dx * dx + dy * dy > slop * slop) {
+                                cloth = false
+                                PageTurn.pressCancel(view)
+                            }
+                        }
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        if (cloth) {
+                            cloth = false
+                            if (e.actionMasked == MotionEvent.ACTION_UP) PageTurn.pressOut(view)
+                            else PageTurn.pressCancel(view)
+                        }
+                    }
                 }
             }
             false
@@ -398,9 +423,24 @@ class TileAdapter(
         }
     }
 
+    /**
+     * Icons are cached by app, shape and size. Asking PackageManager and
+     * masking a bitmap for every tile on every rebind (edit mode, a pinned
+     * app, coming back to Start) is a big part of the lag on the UI thread.
+     */
+    private val iconCache = android.util.LruCache<String, Drawable.ConstantState>(96)
+
+    fun clearIconCache() {
+        iconCache.evictAll()
+    }
+
     private fun tileIcon(pkg: String, cls: String, size: Int): Drawable? {
+        val key = "$pkg/$cls/$iconShape/$size"
+        iconCache.get(key)?.let { return it.newDrawable(ctx.resources) }
         val raw = ctx.packageManager.getActivityIcon(ComponentName(pkg, cls))
-        return IconMasks.apply(ctx.resources, raw, iconShape, size)
+        val out = IconMasks.apply(ctx.resources, raw, iconShape, size)
+        out.constantState?.let { iconCache.put(key, it) }
+        return out
     }
 
     private fun cellSize(view: View): Int {
@@ -426,7 +466,8 @@ class TileAdapter(
     private fun tilt(v: View, x: Float, y: Float) {
         val w = v.width.coerceAtLeast(1)
         val h = v.height.coerceAtLeast(1)
-        v.cameraDistance = w * 10f
+        // Setting the distance redraws the tile, so only do it when it changed.
+        if (v.cameraDistance != w * 10f) v.cameraDistance = w * 10f
         val maxTilt = 11f
         val rotY = ((x - w / 2f) / (w / 2f) * maxTilt).coerceIn(-maxTilt, maxTilt)
         val rotX = ((h / 2f - y) / (h / 2f) * maxTilt).coerceIn(-maxTilt, maxTilt)
