@@ -151,7 +151,66 @@ object VistaGlass {
         }.start()
     }
 
+    /**
+     * The picture the glass looks use. Android 13 and newer do not let a normal
+     * app read the phone's wallpaper (getDrawable throws), so the person picks
+     * a picture once in Settings and Ashlar keeps its own copy here.
+     */
+    fun pictureFile(context: Context): java.io.File =
+        java.io.File(context.applicationContext.filesDir, "glass_wallpaper.jpg")
+
+    fun hasPicture(context: Context): Boolean = pictureFile(context).isFile
+
+    /**
+     * Copy a picked picture into [pictureFile], at most 1920 px on its long
+     * side, turned the right way up. Runs off the main thread. False if the
+     * picture could not be read.
+     */
+    fun savePicture(context: Context, uri: android.net.Uri): Boolean {
+        val app = context.applicationContext
+        val bmp = runCatching { decodeScaled(app, uri, 1920) }.getOrNull() ?: return false
+        val out = pictureFile(app)
+        val tmp = java.io.File(out.parentFile, out.name + ".tmp")
+        val ok = runCatching {
+            tmp.outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 92, it) }
+        }.getOrDefault(false)
+        if (!ok || !tmp.renameTo(out)) {
+            tmp.delete()
+            return false
+        }
+        return true
+    }
+
+    fun clearPicture(context: Context) {
+        pictureFile(context).delete()
+    }
+
+    private fun decodeScaled(context: Context, uri: android.net.Uri, edge: Int): Bitmap? {
+        val cr = context.contentResolver
+        if (Build.VERSION.SDK_INT >= 28) {
+            // ImageDecoder turns camera photos the right way up on its own.
+            val source = android.graphics.ImageDecoder.createSource(cr, uri)
+            return android.graphics.ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+                val long = maxOf(info.size.width, info.size.height)
+                var sample = 1
+                while (long / (sample * 2) >= edge) sample *= 2
+                decoder.setTargetSampleSize(sample)
+                decoder.allocator = android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE
+            }
+        }
+        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        cr.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, bounds) }
+        val long = maxOf(bounds.outWidth, bounds.outHeight)
+        if (long <= 0) return null
+        var sample = 1
+        while (long / (sample * 2) >= edge) sample *= 2
+        val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
+        return cr.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, opts) }
+    }
+
     private fun wallpaperId(context: Context): Int {
+        val own = pictureFile(context)
+        if (own.isFile) return (own.lastModified() xor own.length()).toInt() or 1
         return try {
             WallpaperManager.getInstance(context).getWallpaperId(WallpaperManager.FLAG_SYSTEM)
         } catch (e: Exception) {
@@ -159,8 +218,22 @@ object VistaGlass {
         }
     }
 
+    /** The picked picture, or the phone's wallpaper where Android still allows reading it. */
+    private fun source(context: Context): Drawable? {
+        val own = pictureFile(context)
+        if (own.isFile) {
+            val bmp = android.graphics.BitmapFactory.decodeFile(own.path)
+            if (bmp != null) return BitmapDrawable(context.resources, bmp)
+        }
+        return runCatching { WallpaperManager.getInstance(context).drawable }.getOrNull()
+    }
+
     private fun build(context: Context): Drawable {
-        val src = WallpaperManager.getInstance(context).drawable ?: return fallback()
+        val src = source(context) ?: run {
+            plateBmp = null
+            clearBmp = null
+            return fallback()
+        }
         val dm = context.resources.displayMetrics
         // Frame the wallpaper the way the screen does: fill it, crop the overflow.
         // Every sample uses the same framing, so a tile lines up with the page.

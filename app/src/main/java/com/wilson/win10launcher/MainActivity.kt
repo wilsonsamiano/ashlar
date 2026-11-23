@@ -329,6 +329,10 @@ class MainActivity : AppCompatActivity() {
                     window.statusBarColor = 0xFF071525.toInt()
                     window.navigationBarColor = 0xFF071525.toInt()
                     dockInvalidate()
+                    // The glass samples are new: Ice tiles lens them when they draw.
+                    for (i in 0 until grid.childCount) {
+                        grid.getChildAt(i).findViewById<View>(R.id.tileFace)?.invalidate()
+                    }
                 }
                 if (root.background == null) paint(VistaGlass.fallback())
                 VistaGlass.frost(this, paint)

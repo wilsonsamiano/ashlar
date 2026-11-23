@@ -33,6 +33,26 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var prefs: Prefs
     private var appliedDark = true
 
+    private val pickPicture = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri == null) return@registerForActivityResult
+        val status = findViewById<TextView>(R.id.glassPictureStatus)
+        status.text = "Saving the picture..."
+        val app = applicationContext
+        Thread {
+            val ok = VistaGlass.savePicture(app, uri)
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (ok) {
+                    recreate()
+                } else {
+                    status.text = "That picture could not be opened. Try another one."
+                }
+            }
+        }.start()
+    }
+
     private val locationPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -121,6 +141,25 @@ class SettingsActivity : AppCompatActivity() {
             "ice" -> "Ice is liquid glass over your wallpaper. Slide to choose how clear it is."
             else -> "Metro is the flat Start screen."
         }
+        val pictureRow = findViewById<View>(R.id.glassPictureRow)
+        val pictureStatus = findViewById<TextView>(R.id.glassPictureStatus)
+        val pictureBtn = findViewById<Button>(R.id.glassPictureBtn)
+        val pictureClear = findViewById<Button>(R.id.glassPictureClear)
+        pictureRow.visibility = if (look == "ice" || look == "vista") View.VISIBLE else View.GONE
+        pictureStatus.setTextColor(prefs.fgColor())
+        val hasPicture = VistaGlass.hasPicture(this)
+        pictureStatus.text = if (hasPicture) {
+            "The glass shows your picture. Pick another one any time."
+        } else {
+            "Android does not let apps read your wallpaper. Pick the same picture here once and the glass will show it."
+        }
+        pictureBtn.text = if (hasPicture) "Change picture" else "Pick picture"
+        pictureBtn.setOnClickListener { pickPicture.launch("image/*") }
+        pictureClear.visibility = if (hasPicture) View.VISIBLE else View.GONE
+        pictureClear.setOnClickListener {
+            VistaGlass.clearPicture(this)
+            recreate()
+        }
         val iceRow = findViewById<View>(R.id.iceGlassRow)
         val iceGlass = findViewById<android.widget.SeekBar>(R.id.iceGlass)
         val iceGlassName = findViewById<TextView>(R.id.iceGlassName)
@@ -133,6 +172,7 @@ class SettingsActivity : AppCompatActivity() {
         iceGlass.max = 100
         iceGlass.progress = prefs.iceClarity
         iceGlassName.text = glassName(prefs.iceClarity)
+        iceGlassName.setTextColor(prefs.fgColor())
         iceGlass.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(bar: android.widget.SeekBar, value: Int, fromUser: Boolean) {
                 iceGlassName.text = glassName(value)
