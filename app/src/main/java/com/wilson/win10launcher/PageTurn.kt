@@ -5,12 +5,16 @@ import android.content.Intent
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.view.animation.DecelerateInterpolator
 import android.view.animation.Interpolator
+import android.view.animation.OvershootInterpolator
 import androidx.recyclerview.widget.RecyclerView
+import kotlin.math.exp
+import kotlin.math.hypot
 import kotlin.math.hypot
 
 /**
@@ -59,10 +63,15 @@ object PageTurn {
     private val EASE_IN = ExpoEase(EXPO, false)
     private val EASE_OUT = ExpoEase(EXPO, true)
     private val DECEL = DecelerateInterpolator()
+    private val BOUNCE = OvershootInterpolator(1.7f)
     private val handler = Handler(Looper.getMainLooper())
     private var laterToken = 0
     private var laterRunnable: Runnable? = null
     private var waveFaces: List<View> = emptyList()
+    /** When the textile rise finishes, so a launch does not cut the bounce. */
+    private var textileUntil = 0L
+    private const val SINK_MS = 160L
+    private const val RISE_MS = 280L
 
     /** True while a turn, slide, or tile wave is in flight. Clocks must not invalidate then. */
     fun animating(): Boolean = laterRunnable != null
@@ -73,6 +82,76 @@ object PageTurn {
     fun drop(face: View) {
         if (owns(face)) waveFaces = waveFaces.filter { it !== face }
         releaseFace(face)
+    }
+
+    /**
+     * Finger down. The touched tile sinks, and the tiles around it sink
+     * less the farther they are, a beat later, like a hand on cloth.
+     */
+    fun pressIn(tapped: View) {
+        if (animating()) return
+        textileUntil = 0L
+        val grid = recyclerOf(tapped) ?: return
+        eachFace(grid, tapped) { face, dist, density ->
+            val reach = density * 150f
+            val fall = exp(-dist / reach).toFloat()
+            if (face !== tapped && fall < 0.08f) return@eachFace
+            val amount = if (face === tapped) 1f else fall * 0.65f
+            val drop = density * 12f * amount
+            val delay = if (face === tapped) 0L else (dist / (density * 4f)).toLong().coerceAtMost(120L)
+            face.animate().cancel()
+            face.animate()
+                .translationY(drop)
+                .scaleX(1f - 0.05f * amount)
+                .scaleY(1f - 0.05f * amount)
+                .setStartDelay(delay)
+                .setDuration(SINK_MS)
+                .setInterpolator(DECEL)
+                .start()
+        }
+    }
+
+    /**
+     * Finger up. The touched tile rises first and overshoots a little.
+     * The others follow, farther ones later, instead of the touched tile last.
+     */
+    fun pressOut(tapped: View) {
+        if (animating()) return
+        val grid = recyclerOf(tapped) ?: return
+        eachFace(grid, tapped) { face, dist, density ->
+            val sunk = face.translationY != 0f || face.scaleX < 0.999f
+            if (face !== tapped && !sunk) return@eachFace
+            val delay = if (face === tapped) 0L
+            else (36L + (dist / (density * 5f)).toLong()).coerceAtMost(170L)
+            face.animate().cancel()
+            face.animate()
+                .translationY(0f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setStartDelay(delay)
+                .setDuration(RISE_MS)
+                .setInterpolator(BOUNCE)
+                .start()
+        }
+        textileUntil = SystemClock.uptimeMillis() + RISE_MS
+    }
+
+    /** The finger slid off into a scroll. Let the cloth go flat, no bounce. */
+    fun pressCancel(tapped: View) {
+        textileUntil = 0L
+        val grid = recyclerOf(tapped) ?: return
+        eachFace(grid, tapped) { face, _, _ ->
+            if (face.translationY == 0f && face.scaleX == 1f) return@eachFace
+            face.animate().cancel()
+            face.animate()
+                .translationY(0f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setStartDelay(0L)
+                .setDuration(90L)
+                .setInterpolator(DECEL)
+                .start()
+        }
     }
 
     /** Flatten every visible tile that is not in the current wave. */
@@ -160,36 +239,51 @@ object PageTurn {
     fun featherOut(grid: RecyclerView, tapped: View, then: () -> Unit) {
         val page = sheetOf(grid)
         cancelMotion()
-        for (face in facesOf(grid)) {
-            if (face !== tapped) releaseFace(face)
-        }
-        unclip(page)
-        tapped.animate().cancel()
-        tapped.animate()
-            .scaleX(0.9f)
-            .scaleY(0.9f)
-            .setStartDelay(0L)
-            .setDuration(PUSH_MS)
-            .setInterpolator(DECEL)
-            .start()
-        later(PUSH_MS) {
+        val wait = (textileUntil - SystemClock.uptimeMillis()).coerceAtLeast(0L)
+        textileUntil = 0L
+        later(wait) {
             if (!page.isAttachedToWindow) {
                 unlock(page)
                 freeze(grid, false)
                 then()
                 return@later
             }
-            // One texture for the whole page. Per-tile layers clip at the
-            // bottom of the screen and tear when the taskbar resizes the window.
-            lock(page)
-            freeze(grid, true)
-            hinge(page)
-            page.translationX = 0f
-            page.rotationY = 0f
-            spin(page, OPEN, FEATHER_OUT, easeOut = false, hold = true) {
-                freeze(grid, false)
-                then()
+            for (face in facesOf(grid)) {
+                if (face !== tapped) releaseFace(face)
             }
+            unclip(page)
+            if (wait == 0L) {
+                tapped.animate().cancel()
+                tapped.animate()
+                    .scaleX(0.9f)
+                    .scaleY(0.9f)
+                    .setStartDelay(0L)
+                    .setDuration(PUSH_MS)
+                    .setInterpolator(DECEL)
+                    .start()
+                later(PUSH_MS) { turnSheet(page, grid, then) }
+            } else {
+                releaseFace(tapped)
+                turnSheet(page, grid, then)
+            }
+        }
+    }
+
+    private fun turnSheet(page: View, grid: RecyclerView, then: () -> Unit) {
+        if (!page.isAttachedToWindow) {
+            unlock(page)
+            freeze(grid, false)
+            then()
+            return
+        }
+        lock(page)
+        freeze(grid, true)
+        hinge(page)
+        page.translationX = 0f
+        page.rotationY = 0f
+        spin(page, OPEN, FEATHER_OUT, easeOut = false, hold = true) {
+            freeze(grid, false)
+            then()
         }
     }
 
@@ -269,6 +363,35 @@ object PageTurn {
         val w = if (page.width > 0) page.width.toFloat()
         else grid.resources.displayMetrics.widthPixels.toFloat()
         return Hinge(loc[0].toFloat(), loc[1] + h / 2f, w)
+    }
+
+    private fun recyclerOf(start: View): RecyclerView? {
+        var v: View? = start
+        while (v != null) {
+            if (v is RecyclerView) return v
+            v = v.parent as? View
+        }
+        return null
+    }
+
+    private fun eachFace(
+        grid: RecyclerView,
+        tapped: View,
+        block: (face: View, dist: Float, density: Float) -> Unit
+    ) {
+        val loc = IntArray(2)
+        tapped.getLocationOnScreen(loc)
+        val cx = loc[0] + tapped.width / 2f
+        val cy = loc[1] + tapped.height / 2f
+        val density = tapped.resources.displayMetrics.density
+        for (i in 0 until grid.childCount) {
+            val face = grid.getChildAt(i).findViewById<View>(R.id.tileFace) ?: continue
+            if (face.width <= 0 || face.height <= 0) continue
+            face.getLocationOnScreen(loc)
+            val dx = loc[0] + face.width / 2f - cx
+            val dy = loc[1] + face.height / 2f - cy
+            block(face, hypot(dx.toDouble(), dy.toDouble()).toFloat(), density)
+        }
     }
 
     private fun facesOf(grid: RecyclerView): List<View> {

@@ -194,13 +194,38 @@ class TileAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
         val v = LayoutInflater.from(ctx).inflate(R.layout.item_tile, parent, false)
         val vh = VH(v)
-        // Windows 10 Mobile 3D tilt. Skipped while rearranging.
-        // Returning false lets click, long-click, and drag still fire.
+        var pressX = 0f
+        var pressY = 0f
+        var cloth = false
+        // Press sinks this tile and a softer ring of neighbors. Returning
+        // false lets click, long-click, and drag still fire.
         vh.face.setOnTouchListener { view, e ->
             if (!editMode) {
                 when (e.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> tilt(view, e.x, e.y)
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> untilt(view)
+                    MotionEvent.ACTION_DOWN -> {
+                        pressX = e.rawX
+                        pressY = e.rawY
+                        cloth = true
+                        PageTurn.pressIn(view)
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        if (cloth) {
+                            val slop = view.resources.displayMetrics.density * 18f
+                            val dx = e.rawX - pressX
+                            val dy = e.rawY - pressY
+                            if (dx * dx + dy * dy > slop * slop) {
+                                cloth = false
+                                PageTurn.pressCancel(view)
+                            }
+                        }
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        if (cloth) {
+                            cloth = false
+                            if (e.actionMasked == MotionEvent.ACTION_UP) PageTurn.pressOut(view)
+                            else PageTurn.pressCancel(view)
+                        }
+                    }
                 }
             }
             false
