@@ -87,23 +87,24 @@ object PageTurn {
     // ---- Press: a spiderweb while the finger is down, water when it lets go.
 
     /** How far the web pulls, in dp. Tiles this far away feel about a third. */
-    private const val WEB_REACH_DP = 170f
+    private const val WEB_REACH_DP = 230f
     /** How fast the pull spreads out from the finger, dp per second. */
     private const val WEB_SPEED_DP = 2000f
     /** How fast the ripple rolls out after letting go, dp per second. */
     private const val WAVE_SPEED_DP = 700f
     /** How far the ripple is felt beyond the web, in dp. */
-    private const val RING_REACH_DP = 320f
+    private const val RING_REACH_DP = 440f
     /** One bob up and down, seconds. */
-    private const val WAVE_PERIOD_S = 0.36f
+    private const val WAVE_PERIOD_S = 0.42f
     /** How fast the bobbing dies away, seconds. */
-    private const val WAVE_DECAY_S = 0.30f
+    private const val WAVE_DECAY_S = 0.42f
     /** How far a tile is pulled toward the finger, dp. */
-    private const val PULL_DP = 14f
-    /** How much a fully sunk tile shrinks. */
-    private const val SINK_SCALE = 0.08f
+    private const val PULL_DP = 26f
+    /** How much a fully sunk tile shrinks. A raised tile grows less, so neighbors do not pile up. */
+    private const val SINK_SCALE = 0.15f
+    private const val RISE_SCALE = 0.08f
     /** How far a tile tilts toward the finger, degrees. */
-    private const val TILT_DEG = 6f
+    private const val TILT_DEG = 11f
     /** A launch waits this long after letting go, for the pressed tile to spring up. */
     private const val BOUNCE_WAIT = 200L
 
@@ -151,7 +152,7 @@ object PageTurn {
             val dy = loc[1] + face.height / 2f - cy
             val dist = if (face === tapped) 0f else hypot(dx, dy)
             val web = exp(-dist / webReach)
-            val ring = 0.6f * exp(-dist / ringReach) * (1f - web)
+            val ring = 1.0f * exp(-dist / ringReach) * (1f - web)
             if (face !== tapped && web < 0.03f && ring < 0.03f) continue
             val ux = if (dist > 0f) dx / dist else 0f
             val uy = if (dist > 0f) dy / dist else 0f
@@ -249,7 +250,7 @@ object PageTurn {
         val pull = dp * PULL_DP * h
         f.translationX = s.ux * pull
         f.translationY = s.uy * pull
-        val scale = 1f + SINK_SCALE * h
+        val scale = 1f + (if (h < 0f) SINK_SCALE else RISE_SCALE) * h
         f.scaleX = scale
         f.scaleY = scale
         f.rotationY = -s.ux * TILT_DEG * h
