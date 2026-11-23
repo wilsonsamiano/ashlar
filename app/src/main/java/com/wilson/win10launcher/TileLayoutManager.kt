@@ -46,15 +46,18 @@ class TileLayoutManager(
             interpolator = android.view.animation.OvershootInterpolator(1.35f)
             addUpdateListener {
                 val t = it.animatedValue as Float
-                bungee = (from * (1f - t)).toInt()
-                requestLayout()
+                val next = (from * (1f - t)).toInt()
+                // Slide the tiles that are already on screen. A full relayout
+                // every frame re-packs the grid and is what made the snap-back stutter.
+                offsetChildrenVertical(next - bungee)
+                bungee = next
             }
             addListener(object : android.animation.AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: android.animation.Animator) {
+                    offsetChildrenVertical(-bungee)
                     bungee = 0
                     pull = 0f
                     spring = null
-                    requestLayout()
                 }
             })
             start()

@@ -398,9 +398,24 @@ class TileAdapter(
         }
     }
 
+    /**
+     * Icons are cached by app, shape and size. Asking PackageManager and
+     * masking a bitmap for every tile on every rebind (edit mode, a pinned
+     * app, coming back to Start) is a big part of the lag on the UI thread.
+     */
+    private val iconCache = android.util.LruCache<String, Drawable.ConstantState>(96)
+
+    fun clearIconCache() {
+        iconCache.evictAll()
+    }
+
     private fun tileIcon(pkg: String, cls: String, size: Int): Drawable? {
+        val key = "$pkg/$cls/$iconShape/$size"
+        iconCache.get(key)?.let { return it.newDrawable(ctx.resources) }
         val raw = ctx.packageManager.getActivityIcon(ComponentName(pkg, cls))
-        return IconMasks.apply(ctx.resources, raw, iconShape, size)
+        val out = IconMasks.apply(ctx.resources, raw, iconShape, size)
+        out.constantState?.let { iconCache.put(key, it) }
+        return out
     }
 
     private fun cellSize(view: View): Int {
@@ -426,7 +441,8 @@ class TileAdapter(
     private fun tilt(v: View, x: Float, y: Float) {
         val w = v.width.coerceAtLeast(1)
         val h = v.height.coerceAtLeast(1)
-        v.cameraDistance = w * 10f
+        // Setting the distance redraws the tile, so only do it when it changed.
+        if (v.cameraDistance != w * 10f) v.cameraDistance = w * 10f
         val maxTilt = 11f
         val rotY = ((x - w / 2f) / (w / 2f) * maxTilt).coerceIn(-maxTilt, maxTilt)
         val rotX = ((h / 2f - y) / (h / 2f) * maxTilt).coerceIn(-maxTilt, maxTilt)
