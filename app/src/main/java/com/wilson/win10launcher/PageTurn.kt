@@ -11,13 +11,11 @@ import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.view.animation.DecelerateInterpolator
 import android.view.animation.Interpolator
+import android.view.animation.OvershootInterpolator
 import androidx.recyclerview.widget.RecyclerView
-import android.animation.ValueAnimator
-import android.view.animation.LinearInterpolator
-import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.hypot
-import kotlin.math.sin
+import kotlin.math.hypot
 
 /**
  * Windows Phone 7 motions, taken from the open-source phone toolkit
@@ -65,12 +63,15 @@ object PageTurn {
     private val EASE_IN = ExpoEase(EXPO, false)
     private val EASE_OUT = ExpoEase(EXPO, true)
     private val DECEL = DecelerateInterpolator()
+    private val BOUNCE = OvershootInterpolator(1.7f)
     private val handler = Handler(Looper.getMainLooper())
     private var laterToken = 0
     private var laterRunnable: Runnable? = null
     private var waveFaces: List<View> = emptyList()
     /** When the textile rise finishes, so a launch does not cut the bounce. */
     private var textileUntil = 0L
+    private const val SINK_MS = 160L
+    private const val RISE_MS = 280L
 
     /** True while a turn, slide, or tile wave is in flight. Clocks must not invalidate then. */
     fun animating(): Boolean = laterRunnable != null
@@ -83,268 +84,78 @@ object PageTurn {
         releaseFace(face)
     }
 
-    // ---- Press: a spiderweb while the finger is down, water when it lets go.
-    //
-    // The tiles float on a water surface. The surface is smooth in space and
-    // time (nothing starts or stops on a given frame), and each tile follows it
-    // on a soft spring, so it carries a little momentum and overshoots like
-    // something floating. Tiles also tilt with the slope of the water under them.
-
-    /** How far the dip under the finger reaches, dp. */
-    private const val WEB_REACH_DP = 230f
-    /** How long the dip takes to form, seconds. */
-    private const val WEB_IN_S = 0.18f
-    /** While held, small ripples keep running out from the finger. */
-    private const val HOLD_RIPPLE = 0.14f
-    private const val HOLD_WAVE_DP = 260f
-    private const val HOLD_SPEED_DP = 260f
-    /** After letting go, a ring of waves rolls out. */
-    private const val WAVE_AMP = 0.9f
-    private const val WAVE_SPEED_DP = 650f
-    private const val WAVE_LENGTH_DP = 320f
-    private const val WAVE_WIDTH_DP = 150f
-    private const val WAVE_FADE_S = 0.9f
-    private const val WAVE_REACH_DP = 900f
-    /** The pressed spot springs back up and bobs. */
-    private const val REBOUND_PERIOD_S = 0.45f
-    private const val REBOUND_FADE_S = 0.35f
-    /** Each tile follows the water on a soft spring. */
-    private const val SPRING_HZ = 3.5f
-    private const val SPRING_DAMPING = 0.45f
-    /** How far a tile is pulled toward the finger at full depth, dp. */
-    private const val PULL_DP = 22f
-    /** How much a fully sunk tile shrinks. A raised tile grows less, so neighbors do not pile up. */
-    private const val SINK_SCALE = 0.15f
-    private const val RISE_SCALE = 0.08f
-    /** Tilt per unit of surface slope (height change per 100 dp), degrees, and its cap. */
-    private const val SLOPE_TILT = 14f
-    private const val MAX_TILT = 16f
-    /** A launch waits this long after letting go, for the pressed tile to spring up. */
-    private const val BOUNCE_WAIT = 200L
-
-    private class Strand(
-        val face: View,
-        val dist: Float,
-        val ux: Float,
-        val uy: Float,
-        var y: Float,
-        var vy: Float
-    )
-
-    private var strands: List<Strand> = emptyList()
-    private var pressAt = 0L
-    private var releaseAt = -1L
-    private var calmAt = -1L
-    private var lastFrame = 0L
-    private var dp = 1f
-    private var pump: ValueAnimator? = null
-
-    private fun clock(): Long = android.view.animation.AnimationUtils.currentAnimationTimeMillis()
-
     /**
-     * Finger down. The touched tile sinks into the water, and the tiles around
-     * it slide toward the finger and tilt toward it, like strands of a web,
-     * while small ripples keep running out from the finger.
+     * Finger down. The touched tile sinks, and the tiles around it sink
+     * less the farther they are, a beat later, like a hand on cloth.
      */
     fun pressIn(tapped: View) {
         if (animating()) return
         textileUntil = 0L
         val grid = recyclerOf(tapped) ?: return
-        dp = tapped.resources.displayMetrics.density
-        // Pressing again while the water still moves: keep each tile's motion.
-        val before = HashMap<View, Strand>()
-        for (s in strands) before[s.face] = s
-        // Positions come from the layout: where each tile sits at rest, not
-        // where the water has moved, shrunk or tilted it.
-        val here = restCenter(grid, tapped) ?: return
-        val list = ArrayList<Strand>()
-        for (i in 0 until grid.childCount) {
-            val face = grid.getChildAt(i).findViewById<View>(R.id.tileFace) ?: continue
-            if (face.width <= 0 || face.height <= 0) continue
-            val at = restCenter(grid, face) ?: continue
-            val old = before[face]
-            val dx = at[0] - here[0]
-            val dy = at[1] - here[1]
-            val dist = if (face === tapped) 0f else hypot(dx, dy)
-            if (face !== tapped && dist > dp * WAVE_REACH_DP) continue
+        eachFace(grid, tapped) { face, dist, density ->
+            val reach = density * 150f
+            val fall = exp(-dist / reach).toFloat()
+            if (face !== tapped && fall < 0.08f) return@eachFace
+            val amount = if (face === tapped) 1f else fall * 0.65f
+            val drop = density * 12f * amount
+            val delay = if (face === tapped) 0L else (dist / (density * 4f)).toLong().coerceAtMost(120L)
             face.animate().cancel()
-            face.pivotX = face.width / 2f
-            face.pivotY = face.height / 2f
-            val eye = face.width * 10f
-            if (face.cameraDistance != eye) face.cameraDistance = eye
-            val ux = if (dist > 0f) dx / dist else 0f
-            val uy = if (dist > 0f) dy / dist else 0f
-            list.add(Strand(face, dist, ux, uy, old?.y ?: 0f, old?.vy ?: 0f))
+            face.animate()
+                .translationY(drop)
+                .scaleX(1f - 0.05f * amount)
+                .scaleY(1f - 0.05f * amount)
+                .setStartDelay(delay)
+                .setDuration(SINK_MS)
+                .setInterpolator(DECEL)
+                .start()
         }
-        // Tiles that left the reach settle where they are.
-        for (s in before.values) if (list.none { it.face === s.face }) show(s, 0f, 0f)
-        if (list.isEmpty()) return
-        strands = list
-        pressAt = clock()
-        releaseAt = -1L
-        calmAt = -1L
-        lastFrame = 0L
-        startPump()
     }
 
-    /** Center of [face] in [grid]'s coordinates from layout alone, ignoring any motion. */
-    private fun restCenter(grid: RecyclerView, face: View): FloatArray? {
-        var x = face.width / 2f
-        var y = face.height / 2f
-        var v: View = face
-        while (v !== grid) {
-            x += v.left
-            y += v.top
-            v = v.parent as? View ?: return null
-        }
-        return floatArrayOf(x, y)
-    }
-
-    /** Finger up. The pressed spot springs up and bobs, and a ring of waves rolls out. */
+    /**
+     * Finger up. The touched tile rises first and overshoots a little.
+     * The others follow, farther ones later, instead of the touched tile last.
+     */
     fun pressOut(tapped: View) {
-        if (strands.isEmpty() || releaseAt >= 0L || calmAt >= 0L) return
-        releaseAt = clock()
-        textileUntil = releaseAt + BOUNCE_WAIT
+        if (animating()) return
+        val grid = recyclerOf(tapped) ?: return
+        eachFace(grid, tapped) { face, dist, density ->
+            val sunk = face.translationY != 0f || face.scaleX < 0.999f
+            if (face !== tapped && !sunk) return@eachFace
+            val delay = if (face === tapped) 0L
+            else (36L + (dist / (density * 5f)).toLong()).coerceAtMost(170L)
+            face.animate().cancel()
+            face.animate()
+                .translationY(0f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setStartDelay(delay)
+                .setDuration(RISE_MS)
+                .setInterpolator(BOUNCE)
+                .start()
+        }
+        textileUntil = SystemClock.uptimeMillis() + RISE_MS
     }
 
-    /** The finger slid off into a scroll. The water goes calm, no ring of waves. */
+    /** The finger slid off into a scroll. Let the cloth go flat, no bounce. */
     fun pressCancel(tapped: View) {
         textileUntil = 0L
-        if (strands.isEmpty()) return
-        calmAt = clock()
-    }
-
-    private fun startPump() {
-        if (pump?.isRunning == true) return
-        pump = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 1000L
-            repeatCount = ValueAnimator.INFINITE
-            interpolator = LinearInterpolator()
-            addUpdateListener { step() }
-            start()
+        val grid = recyclerOf(tapped) ?: return
+        eachFace(grid, tapped) { face, _, _ ->
+            if (face.translationY == 0f && face.scaleX == 1f) return@eachFace
+            face.animate().cancel()
+            face.animate()
+                .translationY(0f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setStartDelay(0L)
+                .setDuration(90L)
+                .setInterpolator(DECEL)
+                .start()
         }
-    }
-
-    private fun step() {
-        val list = strands
-        if (list.isEmpty()) {
-            stopWater(reset = false)
-            return
-        }
-        val now = clock()
-        val dt = if (lastFrame == 0L) 1f / 60f else ((now - lastFrame) / 1000f).coerceIn(0f, 1f / 20f)
-        lastFrame = now
-        val w0 = (2.0 * Math.PI).toFloat() * SPRING_HZ
-        val steps = maxOf(1, Math.ceil((dt * 240f).toDouble()).toInt())
-        val h = dt / steps
-        val probe = dp * 6f
-        var moving = false
-        for (s in list) {
-            val target = water(s.dist, now)
-            repeat(steps) {
-                val a = w0 * w0 * (target - s.y) - 2f * SPRING_DAMPING * w0 * s.vy
-                s.vy += a * h
-                s.y += s.vy * h
-            }
-            val slope = if (s.dist > 0f) {
-                (water(s.dist + probe, now) - water(maxOf(0f, s.dist - probe), now)) /
-                    (2f * probe) * (dp * 100f)
-            } else {
-                0f
-            }
-            show(s, s.y, slope)
-            if (kotlin.math.abs(s.y) > 0.002f || kotlin.math.abs(s.vy) > 0.02f ||
-                kotlin.math.abs(target) > 0.002f
-            ) moving = true
-        }
-        val settling = releaseAt >= 0L || calmAt >= 0L
-        val since = if (calmAt >= 0L) now - calmAt else if (releaseAt >= 0L) now - releaseAt else 0L
-        if (settling && since > 300L && !moving) stopWater(reset = true)
-        if (settling && since > 4000L) stopWater(reset = true)
-    }
-
-    /**
-     * Height of the water at [dist] px from the finger: negative is down,
-     * 1 = the dip under the finger at full depth.
-     */
-    private fun water(dist: Float, now: Long): Float {
-        if (calmAt >= 0L) return 0f
-        val d = dist / dp
-        val two = (2.0 * Math.PI).toFloat()
-        val dip = -exp(-d / WEB_REACH_DP)
-        if (releaseAt < 0L) {
-            val held = (now - pressAt) / 1000f
-            return dip * smooth(held / WEB_IN_S) + ripples(d, held)
-        }
-        val heldFor = (releaseAt - pressAt) / 1000f
-        val depth = smooth(heldFor / WEB_IN_S)
-        val t = (now - releaseAt) / 1000f
-        // The dip springs back up past flat and bobs.
-        val rebound = dip * depth * exp(-t / REBOUND_FADE_S) * cos(two * t / REBOUND_PERIOD_S)
-        // The small held ripples run on and fade.
-        val after = ripples(d, heldFor + t) * exp(-t / 0.25f)
-        // A ring of waves rolls out from the finger.
-        val front = d - WAVE_SPEED_DP * t
-        val ring = WAVE_AMP * maxOf(depth, 0.6f) * smooth(t / 0.12f) *
-            exp(-(front / WAVE_WIDTH_DP) * (front / WAVE_WIDTH_DP)) *
-            sin(two * front / WAVE_LENGTH_DP) *
-            exp(-t / WAVE_FADE_S) * exp(-d / WAVE_REACH_DP)
-        return rebound + after + ring
-    }
-
-    private fun ripples(d: Float, held: Float): Float {
-        val two = (2.0 * Math.PI).toFloat()
-        return HOLD_RIPPLE * smooth(held / 0.3f) * exp(-d / 400f) *
-            sin(two * (d - HOLD_SPEED_DP * held) / HOLD_WAVE_DP)
-    }
-
-    private fun smooth(x: Float): Float {
-        val c = x.coerceIn(0f, 1f)
-        return c * c * (3f - 2f * c)
-    }
-
-    private fun show(s: Strand, y: Float, slope: Float) {
-        val f = s.face
-        val pull = dp * PULL_DP * y
-        f.translationX = s.ux * pull
-        f.translationY = s.uy * pull
-        val scale = 1f + (if (y < 0f) SINK_SCALE else RISE_SCALE) * y
-        f.scaleX = scale
-        f.scaleY = scale
-        val tilt = (SLOPE_TILT * slope).coerceIn(-MAX_TILT, MAX_TILT)
-        f.rotationY = s.ux * tilt
-        f.rotationX = -s.uy * tilt
-    }
-
-    private fun stopWater(reset: Boolean) {
-        pump?.cancel()
-        pump = null
-        if (reset) for (s in strands) show(s, 0f, 0f)
-        strands = emptyList()
-        releaseAt = -1L
-        calmAt = -1L
-        lastFrame = 0L
-    }
-
-    /**
-     * A launch is starting while the water still moves. Stop it where it is,
-     * so nothing snaps; the page turns with the tiles as they are, and coming
-     * back flattens them. True if there was water to stop.
-     */
-    private fun freezeWater(): Boolean {
-        if (strands.isEmpty()) return false
-        pump?.cancel()
-        pump = null
-        strands = emptyList()
-        releaseAt = -1L
-        calmAt = -1L
-        lastFrame = 0L
-        return true
     }
 
     /** Flatten every visible tile that is not in the current wave. */
     fun flatten(grid: RecyclerView) {
-        stopWater(reset = false)
         for (i in 0 until grid.childCount) {
             val face = grid.getChildAt(i).findViewById<View>(R.id.tileFace) ?: continue
             if (!owns(face)) releaseFace(face)
@@ -437,16 +248,11 @@ object PageTurn {
                 then()
                 return@later
             }
-            val rippled = freezeWater()
-            if (!rippled) {
-                for (face in facesOf(grid)) {
-                    if (face !== tapped) releaseFace(face)
-                }
+            for (face in facesOf(grid)) {
+                if (face !== tapped) releaseFace(face)
             }
             unclip(page)
-            if (rippled) {
-                turnSheet(page, grid, then)
-            } else if (wait == 0L) {
+            if (wait == 0L) {
                 tapped.animate().cancel()
                 tapped.animate()
                     .scaleX(0.9f)
@@ -484,7 +290,6 @@ object PageTurn {
     fun featherReturn(grid: RecyclerView, ox: Float, oy: Float) {
         val page = sheetOf(grid)
         onPreDraw(page) {
-            stopWater(reset = false)
             cancelMotion()
             for (face in facesOf(grid)) releaseFace(face)
             unclip(page)
@@ -503,7 +308,6 @@ object PageTurn {
     }
 
     fun featherReset(grid: RecyclerView) {
-        stopWater(reset = false)
         val page = sheetOf(grid)
         val extra = waveFaces
         cancelMotion()
@@ -568,6 +372,26 @@ object PageTurn {
             v = v.parent as? View
         }
         return null
+    }
+
+    private fun eachFace(
+        grid: RecyclerView,
+        tapped: View,
+        block: (face: View, dist: Float, density: Float) -> Unit
+    ) {
+        val loc = IntArray(2)
+        tapped.getLocationOnScreen(loc)
+        val cx = loc[0] + tapped.width / 2f
+        val cy = loc[1] + tapped.height / 2f
+        val density = tapped.resources.displayMetrics.density
+        for (i in 0 until grid.childCount) {
+            val face = grid.getChildAt(i).findViewById<View>(R.id.tileFace) ?: continue
+            if (face.width <= 0 || face.height <= 0) continue
+            face.getLocationOnScreen(loc)
+            val dx = loc[0] + face.width / 2f - cx
+            val dy = loc[1] + face.height / 2f - cy
+            block(face, hypot(dx.toDouble(), dy.toDouble()).toFloat(), density)
+        }
     }
 
     private fun facesOf(grid: RecyclerView): List<View> {
