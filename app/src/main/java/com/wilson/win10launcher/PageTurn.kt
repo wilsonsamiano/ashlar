@@ -63,7 +63,7 @@ object PageTurn {
     private val EASE_IN = ExpoEase(EXPO, false)
     private val EASE_OUT = ExpoEase(EXPO, true)
     private val DECEL = DecelerateInterpolator()
-    private val BOUNCE = OvershootInterpolator(1.7f)
+    private val BOUNCE = OvershootInterpolator(2.2f)
     private val handler = Handler(Looper.getMainLooper())
     private var laterToken = 0
     private var laterRunnable: Runnable? = null
@@ -93,17 +93,17 @@ object PageTurn {
         textileUntil = 0L
         val grid = recyclerOf(tapped) ?: return
         eachFace(grid, tapped) { face, dist, density ->
-            val reach = density * 150f
+            val reach = density * 180f
             val fall = exp(-dist / reach).toFloat()
             if (face !== tapped && fall < 0.08f) return@eachFace
-            val amount = if (face === tapped) 1f else fall * 0.65f
-            val drop = density * 12f * amount
+            val amount = if (face === tapped) 1f else fall * 0.75f
+            val drop = density * 18f * amount
             val delay = if (face === tapped) 0L else (dist / (density * 4f)).toLong().coerceAtMost(120L)
             face.animate().cancel()
             face.animate()
                 .translationY(drop)
-                .scaleX(1f - 0.05f * amount)
-                .scaleY(1f - 0.05f * amount)
+                .scaleX(1f - 0.07f * amount)
+                .scaleY(1f - 0.07f * amount)
                 .setStartDelay(delay)
                 .setDuration(SINK_MS)
                 .setInterpolator(DECEL)
